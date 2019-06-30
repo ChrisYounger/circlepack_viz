@@ -209,12 +209,30 @@ index=\"_internal\" sourcetype=\"splunkd_conf\" log_level=\"INFO\" component=\"C
     </panel>
     <panel>
       <viz type="circlepack_viz.circlepack_viz">
-        <search>
-          <query>index=_internal NOT component=metrics NOT component=periodichealthreporter NOT sourcetype IN("splunkd_ui_access", "splunk_btool", "splunkd_access")  | stats count by  log_level component | eval log_level = if(log_level=="WARNING", "WARN", log_level)</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
+        <search base="base1">
+          <query>| stats sum(count) as count by sourcetype component</query>
         </search>
+        <title>Simple Example</title>
+        <option name="circlepack_viz.circlepack_viz.color">schemeCategory10</option>
+        <option name="circlepack_viz.circlepack_viz.colormode">parent</option>
+        <option name="circlepack_viz.circlepack_viz.labelcolor">#ffffff</option>
+        <option name="circlepack_viz.circlepack_viz.labels">show</option>
+        <option name="circlepack_viz.circlepack_viz.labelsize">100</option>
+        <option name="circlepack_viz.circlepack_viz.mode">static</option>
+        <option name="circlepack_viz.circlepack_viz.onclick">none</option>
+        <option name="circlepack_viz.circlepack_viz.packing">circle</option>
+        <option name="circlepack_viz.circlepack_viz.shadow">show</option>
+        <option name="drilldown">none</option>
+        <option name="height">600</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>    
+      <viz type="circlepack_viz.circlepack_viz">
+        <search base="base1">
+          <query>| stats sum(count) as count by log_level component | eval log_level = if(log_level=="WARNING", "WARN", log_level)</query>
+        </search>
+        <title>Example setting colors in the formatting options</title>
         <option name="circlepack_viz.circlepack_viz.color">interpolateGreys</option>
         <option name="circlepack_viz.circlepack_viz.colormode">size</option>
         <option name="circlepack_viz.circlepack_viz.coloroverride">INFO,#1a9035,ERROR,#b22b32,WARN,#AF5300</option>
@@ -235,6 +253,7 @@ index=\"_internal\" sourcetype=\"splunkd_conf\" log_level=\"INFO\" component=\"C
         <search base="base1">
           <query>| stats sum(count) as count by log_level component | eval log_level = case(log_level=="ERROR", "#b22b32",log_level=="INFO", "#1a9035",log_level=="WARN" OR log_level=="WARNING", "#AF5300", true(), "blue")| table  log_level component count | search NOT component="root"</query>
         </search>
+        <title>Example setting colors in the search query</title>
         <option name="circlepack_viz.circlepack_viz.color">schemeCategory10</option>
         <option name="circlepack_viz.circlepack_viz.colormode">firstdatacodes</option>
         <option name="circlepack_viz.circlepack_viz.labelcolor">#000000</option>
@@ -251,29 +270,6 @@ index=\"_internal\" sourcetype=\"splunkd_conf\" log_level=\"INFO\" component=\"C
         <option name="trellis.scales.shared">1</option>
         <option name="trellis.size">medium</option>
       </viz>
-      <viz type="circlepack_viz.circlepack_viz">
-        <search>
-          <query>index=_internal NOT component=metrics NOT component=periodichealthreporter NOT sourcetype IN("splunkd_ui_access", "splunk_btool", "splunkd_access")  | stats count by index sourcetype</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
-        </search>
-        <option name="circlepack_viz.circlepack_viz.color">schemeCategory10</option>
-        <option name="circlepack_viz.circlepack_viz.colormode">parent</option>
-        <option name="circlepack_viz.circlepack_viz.labelcolor">#ffffff</option>
-        <option name="circlepack_viz.circlepack_viz.labels">show</option>
-        <option name="circlepack_viz.circlepack_viz.labelsize">100</option>
-        <option name="circlepack_viz.circlepack_viz.mode">static</option>
-        <option name="circlepack_viz.circlepack_viz.onclick">none</option>
-        <option name="circlepack_viz.circlepack_viz.packing">circle</option>
-        <option name="circlepack_viz.circlepack_viz.shadow">show</option>
-        <option name="drilldown">none</option>
-        <option name="height">800</option>
-        <option name="trellis.enabled">0</option>
-        <option name="trellis.scales.shared">1</option>
-        <option name="trellis.size">medium</option>
-      </viz>
-    </panel>    
+    </panel>
   </row>
-
 </form>
