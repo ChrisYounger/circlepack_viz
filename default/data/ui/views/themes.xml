@@ -1,0 +1,10 @@
+<form theme="light">
+  <label>Circlepack Viz - Themes</label>
+  <row>
+    <panel>
+      <html>
+        <img alt="" src="/static/app/circlepack_viz/themes.png" />
+      </html>
+    </panel>
+  </row>
+</form>

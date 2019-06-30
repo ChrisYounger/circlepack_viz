@@ -1,17 +1,15 @@
 define([
-    'jquery',
     'api/SplunkVisualizationBase',
     'api/SplunkVisualizationUtils',
+    'jquery',
     'd3'
 ],
 function(
-    $,
     SplunkVisualizationBase,
     vizUtils,
+    $,
     d3
 ) {
-    // An excellent explaination walk-through of d3 https://bl.ocks.org/denjn5/e1cdbbe586ac31747b4a304f8f86efa5
-
     var vizObj = {
         initialize: function() {
             SplunkVisualizationBase.prototype.initialize.apply(this, arguments);
@@ -33,7 +31,6 @@ function(
         updateView: function(data, config) {
             var viz = this;
             viz.config = {
-                mode: "static", 
                 labels: "show",
                 labelsize: "100",
                 colormode: "depth",
@@ -88,13 +85,20 @@ function(
             var data;
             var newData = [];
             var mapping = {};
-
             // Convert splunk tabular data to a heirachy format for d3
             var data = {"name": "root", "children": []};
             var drilldown, i, j, k;
+            var skippedRows = 0;
+            var validRows = 0;
             for (i = 0; i < viz.data.rows.length; i++) {
                 var parts = viz.data.rows[i].slice();
                 var size = parts.pop();
+                if (size === "" || isNaN(Number(size))) {
+                    skippedRows++;
+                    continue;
+                } else {
+                    validRows++;
+                }
                 while (parts[parts.length-1] === null || parts[parts.length-1] === "") {
                     parts.pop();
                 }
@@ -121,7 +125,7 @@ function(
                         if (!foundChild) {
                         drilldown = {};
                             for (k = 0; k <= j; k++) {
-                                drilldown[viz.data.fields[k].name] = parts[k];
+                                drilldown[viz.data.fields[k].name] = viz.data.rows[i][k];
                             }
                             childNode = {"name": nodeName, color: first_col, drilldown: drilldown, "children": []};
                             children.push(childNode);
@@ -129,8 +133,8 @@ function(
                         currentNode = childNode;
                     } else {
                         drilldown = {};
-                        for (k = 0; k < parts.length; k++) {
-                            drilldown[viz.data.fields[k].name] = parts[k];
+                        for (k = 0; k < viz.data.rows[i].length - 1; k++) {
+                            drilldown[viz.data.fields[k].name] = viz.data.rows[i][k];
                         }
                         // Reached the end of the sequence; create a leaf node.
                         childNode = {"name": nodeName, color: first_col, drilldown: drilldown, "value": size};
@@ -138,9 +142,13 @@ function(
                     }
                 }
             }
-
-            var svg;
-            var labelsize = Number(viz.config.labelsize) / 100 * 16;
+            if (skippedRows) {
+                console.log("Rows skipped because last column is not numeric: ", skippedRows);
+            }
+            if (skippedRows && ! validRows) {
+                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.</div>");
+                return;
+            }
             function tooltipCreate(d) {
                 var parts = d.ancestors().map(d => d.data.name).reverse();
                 var tt = $("<div></div>");
@@ -156,15 +164,17 @@ function(
                 viz.widthOffset = clientRectangle.x - clientRectangleWrap.x;
                 return tooltip.css("visibility", "visible").html(tt);
             }
-            // we move tooltip during of "mousemove"
+            // move tooltip during mousemove
             function tooltipMove(event) {
                 return tooltip.css("top", (event.offsetY - 30) + "px").css("left", (event.offsetX + viz.widthOffset + 20) + "px"); // 
             }
-            // we hide our tooltip on "mouseout"
+            // hide our tooltip on mouseout
             function tooltiphide() {
                 return tooltip.css("visibility", "hidden");
             }
-            
+
+            var svg;
+            var labelsize = Number(viz.config.labelsize) / 100 * 16;
             var format = d3.format(",d");
             var height = 800;
             var width = 800 * (viz.$container_wrap.width() / viz.$container_wrap.height());
@@ -172,7 +182,7 @@ function(
             svg = d3.create("svg")
                 .style("font", labelsize + "px sans-serif")
                 .style("box-sizing", "border-box");
-            if (viz.config.mode === "zoomable") {
+            if (viz.config.onclick === "zoom") {
                 svg.attr("viewBox", [-0.5 * width, -0.5 * height, width, height]);
             } else {
                 svg.attr("viewBox", [0, 0, width, height]);
@@ -182,15 +192,16 @@ function(
             var svg_node = viz.$container_wrap.children();
             var size = Math.min(viz.$container_wrap.height(),viz.$container_wrap.width());
             svg.attr("width", (viz.$container_wrap.width() - 20) + "px").attr("height", (viz.$container_wrap.height() - 20) + "px");
-            var tooltip = $("<div class='circle_viz-tooltip'></div>");
+            var tooltip = $("<div class='circlepack_viz-tooltip'></div>");
             viz.$container_wrap.append(tooltip);
             pack = data => d3.pack()
                 .size([width - 2, height - 2])
                 .padding(5)
             (d3.hierarchy(data)
                 .sum(d => d.value)
-                // keep the color with the elemtn
                 .sort(function(a, b) {
+                    // If need to add Rectangle packing try adding this
+                    // https://observablehq.com/@mbostock/packing-circles-inside-a-rectangle
                     if (viz.config.packing === "circle") { 
                         return b.value - a.value;
                     } else {
@@ -202,14 +213,15 @@ function(
                 if (viz.config.color.substr(0,1) === "s") {
                     color = d3.scaleOrdinal(d3[viz.config.color]);
                 } else {
-                    color = d3.scaleSequential([0,viz.data.rows[0].length], d3[viz.config.color])
+                    color = d3.scaleSequential([viz.data.rows[0].length + 1, -3], d3[viz.config.color])
                 }
             } else if (viz.config.colormode === "size") {
                 if (viz.config.color.substr(0,1) === "s") {
                     // There isn't ideal becuase the ordinal scale isnt spread across the full range of sizes
                     color = d3.scaleOrdinal(d3[viz.config.color]);
                 } else {
-                    color = d3.scaleSequential([0,Number(root.value)], d3[viz.config.color])
+                    // do some scale trickery to get the colors to look best
+                    color = d3.scaleSequentialPow([ -1 * Number(root.value) / 8, Number(root.value) / 4], d3[viz.config.color]).clamp(true);
                 }
             // name, parent, firstdata, firstdatacodes
             } else {
@@ -227,7 +239,7 @@ function(
                 .attr("dx", 0)
                 .attr("dy", 1);
 
-            if (viz.config.mode === "zoomable") {
+            if (viz.config.onclick === "zoom") {
                 //https://observablehq.com/@d3/zoomable-circle-packing
                 let focus = root;
                 let view;
@@ -268,8 +280,8 @@ function(
                         .on("mouseout", function() { d3.select(this).attr("stroke", null); })
                         .on("click", d => focus !== d && (zoom(d), d3.event.stopPropagation()));
                 const label = svg.append("g")
-                        .attr("pointer-events", "none")
-                        .attr("text-anchor", "middle")
+                    .attr("pointer-events", "none")
+                    .attr("text-anchor", "middle")
                     .selectAll("text")
                     .data(root.descendants())
                     .join("text")
@@ -285,7 +297,6 @@ function(
                     node.attr("transform", d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
                     node.attr("r", d => d.r * k);
                 }
-
                 function zoom(d) {
                     const focus0 = focus;
                     focus = d;
@@ -361,17 +372,33 @@ function(
                     .text(d => d);
                 }
                 node.on("mouseover", function(d) { tooltipCreate(d); })
-                    .on("mousemove", function() { tooltipMove(event);})
+                    .on("mousemove", function() { tooltipMove(event); })
                     .on("mouseout", tooltiphide);
-
-                node.style("cursor", "pointer")
-                    .on("click", function(d, browserEvent){
-                        console.log(d.data.drilldown);
-                        // viz.drilldown({
-                        //     action: SplunkVisualizationBase.FIELD_VALUE_DRILLDOWN,
-                        //     data: d.data.drilldown
-                        // });
-                    });
+                if (viz.config.onclick === "token" || viz.config.onclick === "drilldown") {
+                    node.style("cursor", "pointer")
+                        .on("click", function(d, browserEvent){
+                            if (viz.config.onclick === "token") {
+                                var defaultTokenModel = splunkjs.mvc.Components.get('default');
+                                var submittedTokenModel = splunkjs.mvc.Components.get('submitted');
+                                for (var item in d.data.drilldown) {
+                                    if (d.data.drilldown.hasOwnProperty(item)) {
+                                        console.log("Setting token $circlepack_viz_" +  item + "$ to", d.data.drilldown[item]);
+                                        if (defaultTokenModel) {
+                                            defaultTokenModel.set("circlepack_viz_" + item, d.data.drilldown[item]);
+                                        } 
+                                        if (submittedTokenModel) {
+                                            submittedTokenModel.set("circlepack_viz_" + item, d.data.drilldown[item]);
+                                        }
+                                    }
+                                }
+                            } else {
+                                viz.drilldown({
+                                    action: SplunkVisualizationBase.FIELD_VALUE_DRILLDOWN,
+                                    data: d.data.drilldown
+                                });
+                            }
+                        });
+                }
             }
         },
 

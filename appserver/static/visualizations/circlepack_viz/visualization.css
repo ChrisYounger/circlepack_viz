@@ -21,3 +21,8 @@
     color: black;
     font-weight: bold;
 }
+.circlepack_viz-bad_data {
+    text-align: center;
+    color: #818d99;
+    line-height: 3;
+}

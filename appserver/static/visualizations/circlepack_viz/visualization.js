@@ -1,4 +1,4 @@
-define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(__WEBPACK_EXTERNAL_MODULE_2__, __WEBPACK_EXTERNAL_MODULE_3__) { return /******/ (function(modules) { // webpackBootstrap
+define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(__WEBPACK_EXTERNAL_MODULE_1__, __WEBPACK_EXTERNAL_MODULE_2__) { return /******/ (function(modules) { // webpackBootstrap
 /******/ 	// The module cache
 /******/ 	var installedModules = {};
 
@@ -50,13 +50,11 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	    __webpack_require__(3),
 	    __webpack_require__(4)
 	], __WEBPACK_AMD_DEFINE_RESULT__ = function(
-	    $,
 	    SplunkVisualizationBase,
 	    vizUtils,
+	    $,
 	    d3
 	) {
-	    // An excellent explaination walk-through of d3 https://bl.ocks.org/denjn5/e1cdbbe586ac31747b4a304f8f86efa5
-
 	    var vizObj = {
 	        initialize: function() {
 	            SplunkVisualizationBase.prototype.initialize.apply(this, arguments);
@@ -78,7 +76,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	        updateView: function(data, config) {
 	            var viz = this;
 	            viz.config = {
-	                mode: "static", 
 	                labels: "show",
 	                labelsize: "100",
 	                colormode: "depth",
@@ -133,13 +130,20 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            var data;
 	            var newData = [];
 	            var mapping = {};
-
 	            // Convert splunk tabular data to a heirachy format for d3
 	            var data = {"name": "root", "children": []};
 	            var drilldown, i, j, k;
+	            var skippedRows = 0;
+	            var validRows = 0;
 	            for (i = 0; i < viz.data.rows.length; i++) {
 	                var parts = viz.data.rows[i].slice();
 	                var size = parts.pop();
+	                if (size === "" || isNaN(Number(size))) {
+	                    skippedRows++;
+	                    continue;
+	                } else {
+	                    validRows++;
+	                }
 	                while (parts[parts.length-1] === null || parts[parts.length-1] === "") {
 	                    parts.pop();
 	                }
@@ -166,7 +170,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        if (!foundChild) {
 	                        drilldown = {};
 	                            for (k = 0; k <= j; k++) {
-	                                drilldown[viz.data.fields[k].name] = parts[k];
+	                                drilldown[viz.data.fields[k].name] = viz.data.rows[i][k];
 	                            }
 	                            childNode = {"name": nodeName, color: first_col, drilldown: drilldown, "children": []};
 	                            children.push(childNode);
@@ -174,8 +178,8 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        currentNode = childNode;
 	                    } else {
 	                        drilldown = {};
-	                        for (k = 0; k < parts.length; k++) {
-	                            drilldown[viz.data.fields[k].name] = parts[k];
+	                        for (k = 0; k < viz.data.rows[i].length - 1; k++) {
+	                            drilldown[viz.data.fields[k].name] = viz.data.rows[i][k];
 	                        }
 	                        // Reached the end of the sequence; create a leaf node.
 	                        childNode = {"name": nodeName, color: first_col, drilldown: drilldown, "value": size};
@@ -183,9 +187,13 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    }
 	                }
 	            }
-
-	            var svg;
-	            var labelsize = Number(viz.config.labelsize) / 100 * 16;
+	            if (skippedRows) {
+	                console.log("Rows skipped because last column is not numeric: ", skippedRows);
+	            }
+	            if (skippedRows && ! validRows) {
+	                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.</div>");
+	                return;
+	            }
 	            function tooltipCreate(d) {
 	                var parts = d.ancestors().map(d => d.data.name).reverse();
 	                var tt = $("<div></div>");
@@ -201,15 +209,17 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                viz.widthOffset = clientRectangle.x - clientRectangleWrap.x;
 	                return tooltip.css("visibility", "visible").html(tt);
 	            }
-	            // we move tooltip during of "mousemove"
+	            // move tooltip during mousemove
 	            function tooltipMove(event) {
 	                return tooltip.css("top", (event.offsetY - 30) + "px").css("left", (event.offsetX + viz.widthOffset + 20) + "px"); // 
 	            }
-	            // we hide our tooltip on "mouseout"
+	            // hide our tooltip on mouseout
 	            function tooltiphide() {
 	                return tooltip.css("visibility", "hidden");
 	            }
-	            
+
+	            var svg;
+	            var labelsize = Number(viz.config.labelsize) / 100 * 16;
 	            var format = d3.format(",d");
 	            var height = 800;
 	            var width = 800 * (viz.$container_wrap.width() / viz.$container_wrap.height());
@@ -217,7 +227,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            svg = d3.create("svg")
 	                .style("font", labelsize + "px sans-serif")
 	                .style("box-sizing", "border-box");
-	            if (viz.config.mode === "zoomable") {
+	            if (viz.config.onclick === "zoom") {
 	                svg.attr("viewBox", [-0.5 * width, -0.5 * height, width, height]);
 	            } else {
 	                svg.attr("viewBox", [0, 0, width, height]);
@@ -227,15 +237,16 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            var svg_node = viz.$container_wrap.children();
 	            var size = Math.min(viz.$container_wrap.height(),viz.$container_wrap.width());
 	            svg.attr("width", (viz.$container_wrap.width() - 20) + "px").attr("height", (viz.$container_wrap.height() - 20) + "px");
-	            var tooltip = $("<div class='circle_viz-tooltip'></div>");
+	            var tooltip = $("<div class='circlepack_viz-tooltip'></div>");
 	            viz.$container_wrap.append(tooltip);
 	            pack = data => d3.pack()
 	                .size([width - 2, height - 2])
 	                .padding(5)
 	            (d3.hierarchy(data)
 	                .sum(d => d.value)
-	                // keep the color with the elemtn
 	                .sort(function(a, b) {
+	                    // If need to add Rectangle packing try adding this
+	                    // https://observablehq.com/@mbostock/packing-circles-inside-a-rectangle
 	                    if (viz.config.packing === "circle") { 
 	                        return b.value - a.value;
 	                    } else {
@@ -247,14 +258,15 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                if (viz.config.color.substr(0,1) === "s") {
 	                    color = d3.scaleOrdinal(d3[viz.config.color]);
 	                } else {
-	                    color = d3.scaleSequential([0,viz.data.rows[0].length], d3[viz.config.color])
+	                    color = d3.scaleSequential([viz.data.rows[0].length + 1, -3], d3[viz.config.color])
 	                }
 	            } else if (viz.config.colormode === "size") {
 	                if (viz.config.color.substr(0,1) === "s") {
 	                    // There isn't ideal becuase the ordinal scale isnt spread across the full range of sizes
 	                    color = d3.scaleOrdinal(d3[viz.config.color]);
 	                } else {
-	                    color = d3.scaleSequential([0,Number(root.value)], d3[viz.config.color])
+	                    // do some scale trickery to get the colors to look best
+	                    color = d3.scaleSequentialPow([ -1 * Number(root.value) / 8, Number(root.value) / 4], d3[viz.config.color]).clamp(true);
 	                }
 	            // name, parent, firstdata, firstdatacodes
 	            } else {
@@ -272,7 +284,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                .attr("dx", 0)
 	                .attr("dy", 1);
 
-	            if (viz.config.mode === "zoomable") {
+	            if (viz.config.onclick === "zoom") {
 	                //https://observablehq.com/@d3/zoomable-circle-packing
 	                let focus = root;
 	                let view;
@@ -313,8 +325,8 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        .on("mouseout", function() { d3.select(this).attr("stroke", null); })
 	                        .on("click", d => focus !== d && (zoom(d), d3.event.stopPropagation()));
 	                const label = svg.append("g")
-	                        .attr("pointer-events", "none")
-	                        .attr("text-anchor", "middle")
+	                    .attr("pointer-events", "none")
+	                    .attr("text-anchor", "middle")
 	                    .selectAll("text")
 	                    .data(root.descendants())
 	                    .join("text")
@@ -330,7 +342,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    node.attr("transform", d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
 	                    node.attr("r", d => d.r * k);
 	                }
-
 	                function zoom(d) {
 	                    const focus0 = focus;
 	                    focus = d;
@@ -406,17 +417,33 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    .text(d => d);
 	                }
 	                node.on("mouseover", function(d) { tooltipCreate(d); })
-	                    .on("mousemove", function() { tooltipMove(event);})
+	                    .on("mousemove", function() { tooltipMove(event); })
 	                    .on("mouseout", tooltiphide);
-
-	                node.style("cursor", "pointer")
-	                    .on("click", function(d, browserEvent){
-	                        console.log(d.data.drilldown);
-	                        // viz.drilldown({
-	                        //     action: SplunkVisualizationBase.FIELD_VALUE_DRILLDOWN,
-	                        //     data: d.data.drilldown
-	                        // });
-	                    });
+	                if (viz.config.onclick === "token" || viz.config.onclick === "drilldown") {
+	                    node.style("cursor", "pointer")
+	                        .on("click", function(d, browserEvent){
+	                            if (viz.config.onclick === "token") {
+	                                var defaultTokenModel = splunkjs.mvc.Components.get('default');
+	                                var submittedTokenModel = splunkjs.mvc.Components.get('submitted');
+	                                for (var item in d.data.drilldown) {
+	                                    if (d.data.drilldown.hasOwnProperty(item)) {
+	                                        console.log("Setting token $circlepack_viz_" +  item + "$ to", d.data.drilldown[item]);
+	                                        if (defaultTokenModel) {
+	                                            defaultTokenModel.set("circlepack_viz_" + item, d.data.drilldown[item]);
+	                                        } 
+	                                        if (submittedTokenModel) {
+	                                            submittedTokenModel.set("circlepack_viz_" + item, d.data.drilldown[item]);
+	                                        }
+	                                    }
+	                                }
+	                            } else {
+	                                viz.drilldown({
+	                                    action: SplunkVisualizationBase.FIELD_VALUE_DRILLDOWN,
+	                                    data: d.data.drilldown
+	                                });
+	                            }
+	                        });
+	                }
 	            }
 	        },
 
@@ -438,6 +465,18 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 /***/ }),
 /* 1 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_1__;
+
+/***/ }),
+/* 2 */
+/***/ (function(module, exports) {
+
+	module.exports = __WEBPACK_EXTERNAL_MODULE_2__;
+
+/***/ }),
+/* 3 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
@@ -11041,18 +11080,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 2 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_2__;
-
-/***/ }),
-/* 3 */
-/***/ (function(module, exports) {
-
-	module.exports = __WEBPACK_EXTERNAL_MODULE_3__;
-
-/***/ }),
 /* 4 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -11064,33 +11091,33 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	var d3Axis = __webpack_require__(6);
 	var d3Brush = __webpack_require__(7);
 	var d3Chord = __webpack_require__(16);
-	var d3Collection = __webpack_require__(18);
+	var d3Collection = __webpack_require__(19);
 	var d3Color = __webpack_require__(12);
-	var d3Contour = __webpack_require__(19);
+	var d3Contour = __webpack_require__(20);
 	var d3Dispatch = __webpack_require__(9);
 	var d3Drag = __webpack_require__(10);
-	var d3Dsv = __webpack_require__(20);
+	var d3Dsv = __webpack_require__(22);
 	var d3Ease = __webpack_require__(15);
-	var d3Fetch = __webpack_require__(21);
-	var d3Force = __webpack_require__(22);
-	var d3Format = __webpack_require__(24);
-	var d3Geo = __webpack_require__(25);
-	var d3Hierarchy = __webpack_require__(26);
+	var d3Fetch = __webpack_require__(23);
+	var d3Force = __webpack_require__(24);
+	var d3Format = __webpack_require__(26);
+	var d3Geo = __webpack_require__(27);
+	var d3Hierarchy = __webpack_require__(29);
 	var d3Interpolate = __webpack_require__(11);
-	var d3Path = __webpack_require__(17);
-	var d3Polygon = __webpack_require__(27);
-	var d3Quadtree = __webpack_require__(23);
-	var d3Random = __webpack_require__(28);
-	var d3Scale = __webpack_require__(29);
-	var d3ScaleChromatic = __webpack_require__(32);
+	var d3Path = __webpack_require__(18);
+	var d3Polygon = __webpack_require__(30);
+	var d3Quadtree = __webpack_require__(25);
+	var d3Random = __webpack_require__(31);
+	var d3Scale = __webpack_require__(32);
+	var d3ScaleChromatic = __webpack_require__(36);
 	var d3Selection = __webpack_require__(8);
-	var d3Shape = __webpack_require__(33);
-	var d3Time = __webpack_require__(30);
-	var d3TimeFormat = __webpack_require__(31);
+	var d3Shape = __webpack_require__(37);
+	var d3Time = __webpack_require__(34);
+	var d3TimeFormat = __webpack_require__(35);
 	var d3Timer = __webpack_require__(14);
 	var d3Transition = __webpack_require__(13);
-	var d3Voronoi = __webpack_require__(34);
-	var d3Zoom = __webpack_require__(35);
+	var d3Voronoi = __webpack_require__(38);
+	var d3Zoom = __webpack_require__(39);
 
 	var version = "5.9.2";
 
@@ -16250,7 +16277,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 	// https://d3js.org/d3-chord/ v1.0.6 Copyright 2018 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(5), __webpack_require__(17)) :
+	 true ? factory(exports, __webpack_require__(17), __webpack_require__(18)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-array', 'd3-path'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3,global.d3));
 	}(this, (function (exports,d3Array,d3Path) { 'use strict';
@@ -16484,6 +16511,602 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 /* 17 */
 /***/ (function(module, exports, __webpack_require__) {
 
+	// https://d3js.org/d3-array/ v1.2.4 Copyright 2018 Mike Bostock
+	(function (global, factory) {
+	 true ? factory(exports) :
+	typeof define === 'function' && define.amd ? define(['exports'], factory) :
+	(factory((global.d3 = global.d3 || {})));
+	}(this, (function (exports) { 'use strict';
+
+	function ascending(a, b) {
+	  return a < b ? -1 : a > b ? 1 : a >= b ? 0 : NaN;
+	}
+
+	function bisector(compare) {
+	  if (compare.length === 1) compare = ascendingComparator(compare);
+	  return {
+	    left: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) < 0) lo = mid + 1;
+	        else hi = mid;
+	      }
+	      return lo;
+	    },
+	    right: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) > 0) hi = mid;
+	        else lo = mid + 1;
+	      }
+	      return lo;
+	    }
+	  };
+	}
+
+	function ascendingComparator(f) {
+	  return function(d, x) {
+	    return ascending(f(d), x);
+	  };
+	}
+
+	var ascendingBisect = bisector(ascending);
+	var bisectRight = ascendingBisect.right;
+	var bisectLeft = ascendingBisect.left;
+
+	function pairs(array, f) {
+	  if (f == null) f = pair;
+	  var i = 0, n = array.length - 1, p = array[0], pairs = new Array(n < 0 ? 0 : n);
+	  while (i < n) pairs[i] = f(p, p = array[++i]);
+	  return pairs;
+	}
+
+	function pair(a, b) {
+	  return [a, b];
+	}
+
+	function cross(values0, values1, reduce) {
+	  var n0 = values0.length,
+	      n1 = values1.length,
+	      values = new Array(n0 * n1),
+	      i0,
+	      i1,
+	      i,
+	      value0;
+
+	  if (reduce == null) reduce = pair;
+
+	  for (i0 = i = 0; i0 < n0; ++i0) {
+	    for (value0 = values0[i0], i1 = 0; i1 < n1; ++i1, ++i) {
+	      values[i] = reduce(value0, values1[i1]);
+	    }
+	  }
+
+	  return values;
+	}
+
+	function descending(a, b) {
+	  return b < a ? -1 : b > a ? 1 : b >= a ? 0 : NaN;
+	}
+
+	function number(x) {
+	  return x === null ? NaN : +x;
+	}
+
+	function variance(values, valueof) {
+	  var n = values.length,
+	      m = 0,
+	      i = -1,
+	      mean = 0,
+	      value,
+	      delta,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  if (m > 1) return sum / (m - 1);
+	}
+
+	function deviation(array, f) {
+	  var v = variance(array, f);
+	  return v ? Math.sqrt(v) : v;
+	}
+
+	function extent(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return [min, max];
+	}
+
+	var array = Array.prototype;
+
+	var slice = array.slice;
+	var map = array.map;
+
+	function constant(x) {
+	  return function() {
+	    return x;
+	  };
+	}
+
+	function identity(x) {
+	  return x;
+	}
+
+	function range(start, stop, step) {
+	  start = +start, stop = +stop, step = (n = arguments.length) < 2 ? (stop = start, start = 0, 1) : n < 3 ? 1 : +step;
+
+	  var i = -1,
+	      n = Math.max(0, Math.ceil((stop - start) / step)) | 0,
+	      range = new Array(n);
+
+	  while (++i < n) {
+	    range[i] = start + i * step;
+	  }
+
+	  return range;
+	}
+
+	var e10 = Math.sqrt(50),
+	    e5 = Math.sqrt(10),
+	    e2 = Math.sqrt(2);
+
+	function ticks(start, stop, count) {
+	  var reverse,
+	      i = -1,
+	      n,
+	      ticks,
+	      step;
+
+	  stop = +stop, start = +start, count = +count;
+	  if (start === stop && count > 0) return [start];
+	  if (reverse = stop < start) n = start, start = stop, stop = n;
+	  if ((step = tickIncrement(start, stop, count)) === 0 || !isFinite(step)) return [];
+
+	  if (step > 0) {
+	    start = Math.ceil(start / step);
+	    stop = Math.floor(stop / step);
+	    ticks = new Array(n = Math.ceil(stop - start + 1));
+	    while (++i < n) ticks[i] = (start + i) * step;
+	  } else {
+	    start = Math.floor(start * step);
+	    stop = Math.ceil(stop * step);
+	    ticks = new Array(n = Math.ceil(start - stop + 1));
+	    while (++i < n) ticks[i] = (start - i) / step;
+	  }
+
+	  if (reverse) ticks.reverse();
+
+	  return ticks;
+	}
+
+	function tickIncrement(start, stop, count) {
+	  var step = (stop - start) / Math.max(0, count),
+	      power = Math.floor(Math.log(step) / Math.LN10),
+	      error = step / Math.pow(10, power);
+	  return power >= 0
+	      ? (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1) * Math.pow(10, power)
+	      : -Math.pow(10, -power) / (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1);
+	}
+
+	function tickStep(start, stop, count) {
+	  var step0 = Math.abs(stop - start) / Math.max(0, count),
+	      step1 = Math.pow(10, Math.floor(Math.log(step0) / Math.LN10)),
+	      error = step0 / step1;
+	  if (error >= e10) step1 *= 10;
+	  else if (error >= e5) step1 *= 5;
+	  else if (error >= e2) step1 *= 2;
+	  return stop < start ? -step1 : step1;
+	}
+
+	function sturges(values) {
+	  return Math.ceil(Math.log(values.length) / Math.LN2) + 1;
+	}
+
+	function histogram() {
+	  var value = identity,
+	      domain = extent,
+	      threshold = sturges;
+
+	  function histogram(data) {
+	    var i,
+	        n = data.length,
+	        x,
+	        values = new Array(n);
+
+	    for (i = 0; i < n; ++i) {
+	      values[i] = value(data[i], i, data);
+	    }
+
+	    var xz = domain(values),
+	        x0 = xz[0],
+	        x1 = xz[1],
+	        tz = threshold(values, x0, x1);
+
+	    // Convert number of thresholds into uniform thresholds.
+	    if (!Array.isArray(tz)) {
+	      tz = tickStep(x0, x1, tz);
+	      tz = range(Math.ceil(x0 / tz) * tz, x1, tz); // exclusive
+	    }
+
+	    // Remove any thresholds outside the domain.
+	    var m = tz.length;
+	    while (tz[0] <= x0) tz.shift(), --m;
+	    while (tz[m - 1] > x1) tz.pop(), --m;
+
+	    var bins = new Array(m + 1),
+	        bin;
+
+	    // Initialize bins.
+	    for (i = 0; i <= m; ++i) {
+	      bin = bins[i] = [];
+	      bin.x0 = i > 0 ? tz[i - 1] : x0;
+	      bin.x1 = i < m ? tz[i] : x1;
+	    }
+
+	    // Assign data to bins by value, ignoring any outside the domain.
+	    for (i = 0; i < n; ++i) {
+	      x = values[i];
+	      if (x0 <= x && x <= x1) {
+	        bins[bisectRight(tz, x, 0, m)].push(data[i]);
+	      }
+	    }
+
+	    return bins;
+	  }
+
+	  histogram.value = function(_) {
+	    return arguments.length ? (value = typeof _ === "function" ? _ : constant(_), histogram) : value;
+	  };
+
+	  histogram.domain = function(_) {
+	    return arguments.length ? (domain = typeof _ === "function" ? _ : constant([_[0], _[1]]), histogram) : domain;
+	  };
+
+	  histogram.thresholds = function(_) {
+	    return arguments.length ? (threshold = typeof _ === "function" ? _ : Array.isArray(_) ? constant(slice.call(_)) : constant(_), histogram) : threshold;
+	  };
+
+	  return histogram;
+	}
+
+	function quantile(values, p, valueof) {
+	  if (valueof == null) valueof = number;
+	  if (!(n = values.length)) return;
+	  if ((p = +p) <= 0 || n < 2) return +valueof(values[0], 0, values);
+	  if (p >= 1) return +valueof(values[n - 1], n - 1, values);
+	  var n,
+	      i = (n - 1) * p,
+	      i0 = Math.floor(i),
+	      value0 = +valueof(values[i0], i0, values),
+	      value1 = +valueof(values[i0 + 1], i0 + 1, values);
+	  return value0 + (value1 - value0) * (i - i0);
+	}
+
+	function freedmanDiaconis(values, min, max) {
+	  values = map.call(values, number).sort(ascending);
+	  return Math.ceil((max - min) / (2 * (quantile(values, 0.75) - quantile(values, 0.25)) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function scott(values, min, max) {
+	  return Math.ceil((max - min) / (3.5 * deviation(values) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function max(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return max;
+	}
+
+	function mean(values, valueof) {
+	  var n = values.length,
+	      m = n,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  if (m) return sum / m;
+	}
+
+	function median(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      numbers = [];
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  return quantile(numbers.sort(ascending), 0.5);
+	}
+
+	function merge(arrays) {
+	  var n = arrays.length,
+	      m,
+	      i = -1,
+	      j = 0,
+	      merged,
+	      array;
+
+	  while (++i < n) j += arrays[i].length;
+	  merged = new Array(j);
+
+	  while (--n >= 0) {
+	    array = arrays[n];
+	    m = array.length;
+	    while (--m >= 0) {
+	      merged[--j] = array[m];
+	    }
+	  }
+
+	  return merged;
+	}
+
+	function min(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return min;
+	}
+
+	function permute(array, indexes) {
+	  var i = indexes.length, permutes = new Array(i);
+	  while (i--) permutes[i] = array[indexes[i]];
+	  return permutes;
+	}
+
+	function scan(values, compare) {
+	  if (!(n = values.length)) return;
+	  var n,
+	      i = 0,
+	      j = 0,
+	      xi,
+	      xj = values[j];
+
+	  if (compare == null) compare = ascending;
+
+	  while (++i < n) {
+	    if (compare(xi = values[i], xj) < 0 || compare(xj, xj) !== 0) {
+	      xj = xi, j = i;
+	    }
+	  }
+
+	  if (compare(xj, xj) === 0) return j;
+	}
+
+	function shuffle(array, i0, i1) {
+	  var m = (i1 == null ? array.length : i1) - (i0 = i0 == null ? 0 : +i0),
+	      t,
+	      i;
+
+	  while (m) {
+	    i = Math.random() * m-- | 0;
+	    t = array[m + i0];
+	    array[m + i0] = array[i + i0];
+	    array[i + i0] = t;
+	  }
+
+	  return array;
+	}
+
+	function sum(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (value = +values[i]) sum += value; // Note: zero and null are equivalent.
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (value = +valueof(values[i], i, values)) sum += value;
+	    }
+	  }
+
+	  return sum;
+	}
+
+	function transpose(matrix) {
+	  if (!(n = matrix.length)) return [];
+	  for (var i = -1, m = min(matrix, length), transpose = new Array(m); ++i < m;) {
+	    for (var j = -1, n, row = transpose[i] = new Array(n); ++j < n;) {
+	      row[j] = matrix[j][i];
+	    }
+	  }
+	  return transpose;
+	}
+
+	function length(d) {
+	  return d.length;
+	}
+
+	function zip() {
+	  return transpose(arguments);
+	}
+
+	exports.bisect = bisectRight;
+	exports.bisectRight = bisectRight;
+	exports.bisectLeft = bisectLeft;
+	exports.ascending = ascending;
+	exports.bisector = bisector;
+	exports.cross = cross;
+	exports.descending = descending;
+	exports.deviation = deviation;
+	exports.extent = extent;
+	exports.histogram = histogram;
+	exports.thresholdFreedmanDiaconis = freedmanDiaconis;
+	exports.thresholdScott = scott;
+	exports.thresholdSturges = sturges;
+	exports.max = max;
+	exports.mean = mean;
+	exports.median = median;
+	exports.merge = merge;
+	exports.min = min;
+	exports.pairs = pairs;
+	exports.permute = permute;
+	exports.quantile = quantile;
+	exports.range = range;
+	exports.scan = scan;
+	exports.shuffle = shuffle;
+	exports.sum = sum;
+	exports.ticks = ticks;
+	exports.tickIncrement = tickIncrement;
+	exports.tickStep = tickStep;
+	exports.transpose = transpose;
+	exports.variance = variance;
+	exports.zip = zip;
+
+	Object.defineProperty(exports, '__esModule', { value: true });
+
+	})));
+
+
+/***/ }),
+/* 18 */
+/***/ (function(module, exports, __webpack_require__) {
+
 	// https://d3js.org/d3-path/ v1.0.7 Copyright 2018 Mike Bostock
 	(function (global, factory) {
 	 true ? factory(exports) :
@@ -16628,7 +17251,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 18 */
+/* 19 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-collection/ v1.0.7 Copyright 2018 Mike Bostock
@@ -16851,12 +17474,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 19 */
+/* 20 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-contour/ v1.3.2 Copyright 2018 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(5)) :
+	 true ? factory(exports, __webpack_require__(21)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-array'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3));
 	}(this, (function (exports,d3Array) { 'use strict';
@@ -17288,7 +17911,603 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 20 */
+/* 21 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	// https://d3js.org/d3-array/ v1.2.4 Copyright 2018 Mike Bostock
+	(function (global, factory) {
+	 true ? factory(exports) :
+	typeof define === 'function' && define.amd ? define(['exports'], factory) :
+	(factory((global.d3 = global.d3 || {})));
+	}(this, (function (exports) { 'use strict';
+
+	function ascending(a, b) {
+	  return a < b ? -1 : a > b ? 1 : a >= b ? 0 : NaN;
+	}
+
+	function bisector(compare) {
+	  if (compare.length === 1) compare = ascendingComparator(compare);
+	  return {
+	    left: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) < 0) lo = mid + 1;
+	        else hi = mid;
+	      }
+	      return lo;
+	    },
+	    right: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) > 0) hi = mid;
+	        else lo = mid + 1;
+	      }
+	      return lo;
+	    }
+	  };
+	}
+
+	function ascendingComparator(f) {
+	  return function(d, x) {
+	    return ascending(f(d), x);
+	  };
+	}
+
+	var ascendingBisect = bisector(ascending);
+	var bisectRight = ascendingBisect.right;
+	var bisectLeft = ascendingBisect.left;
+
+	function pairs(array, f) {
+	  if (f == null) f = pair;
+	  var i = 0, n = array.length - 1, p = array[0], pairs = new Array(n < 0 ? 0 : n);
+	  while (i < n) pairs[i] = f(p, p = array[++i]);
+	  return pairs;
+	}
+
+	function pair(a, b) {
+	  return [a, b];
+	}
+
+	function cross(values0, values1, reduce) {
+	  var n0 = values0.length,
+	      n1 = values1.length,
+	      values = new Array(n0 * n1),
+	      i0,
+	      i1,
+	      i,
+	      value0;
+
+	  if (reduce == null) reduce = pair;
+
+	  for (i0 = i = 0; i0 < n0; ++i0) {
+	    for (value0 = values0[i0], i1 = 0; i1 < n1; ++i1, ++i) {
+	      values[i] = reduce(value0, values1[i1]);
+	    }
+	  }
+
+	  return values;
+	}
+
+	function descending(a, b) {
+	  return b < a ? -1 : b > a ? 1 : b >= a ? 0 : NaN;
+	}
+
+	function number(x) {
+	  return x === null ? NaN : +x;
+	}
+
+	function variance(values, valueof) {
+	  var n = values.length,
+	      m = 0,
+	      i = -1,
+	      mean = 0,
+	      value,
+	      delta,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  if (m > 1) return sum / (m - 1);
+	}
+
+	function deviation(array, f) {
+	  var v = variance(array, f);
+	  return v ? Math.sqrt(v) : v;
+	}
+
+	function extent(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return [min, max];
+	}
+
+	var array = Array.prototype;
+
+	var slice = array.slice;
+	var map = array.map;
+
+	function constant(x) {
+	  return function() {
+	    return x;
+	  };
+	}
+
+	function identity(x) {
+	  return x;
+	}
+
+	function range(start, stop, step) {
+	  start = +start, stop = +stop, step = (n = arguments.length) < 2 ? (stop = start, start = 0, 1) : n < 3 ? 1 : +step;
+
+	  var i = -1,
+	      n = Math.max(0, Math.ceil((stop - start) / step)) | 0,
+	      range = new Array(n);
+
+	  while (++i < n) {
+	    range[i] = start + i * step;
+	  }
+
+	  return range;
+	}
+
+	var e10 = Math.sqrt(50),
+	    e5 = Math.sqrt(10),
+	    e2 = Math.sqrt(2);
+
+	function ticks(start, stop, count) {
+	  var reverse,
+	      i = -1,
+	      n,
+	      ticks,
+	      step;
+
+	  stop = +stop, start = +start, count = +count;
+	  if (start === stop && count > 0) return [start];
+	  if (reverse = stop < start) n = start, start = stop, stop = n;
+	  if ((step = tickIncrement(start, stop, count)) === 0 || !isFinite(step)) return [];
+
+	  if (step > 0) {
+	    start = Math.ceil(start / step);
+	    stop = Math.floor(stop / step);
+	    ticks = new Array(n = Math.ceil(stop - start + 1));
+	    while (++i < n) ticks[i] = (start + i) * step;
+	  } else {
+	    start = Math.floor(start * step);
+	    stop = Math.ceil(stop * step);
+	    ticks = new Array(n = Math.ceil(start - stop + 1));
+	    while (++i < n) ticks[i] = (start - i) / step;
+	  }
+
+	  if (reverse) ticks.reverse();
+
+	  return ticks;
+	}
+
+	function tickIncrement(start, stop, count) {
+	  var step = (stop - start) / Math.max(0, count),
+	      power = Math.floor(Math.log(step) / Math.LN10),
+	      error = step / Math.pow(10, power);
+	  return power >= 0
+	      ? (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1) * Math.pow(10, power)
+	      : -Math.pow(10, -power) / (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1);
+	}
+
+	function tickStep(start, stop, count) {
+	  var step0 = Math.abs(stop - start) / Math.max(0, count),
+	      step1 = Math.pow(10, Math.floor(Math.log(step0) / Math.LN10)),
+	      error = step0 / step1;
+	  if (error >= e10) step1 *= 10;
+	  else if (error >= e5) step1 *= 5;
+	  else if (error >= e2) step1 *= 2;
+	  return stop < start ? -step1 : step1;
+	}
+
+	function sturges(values) {
+	  return Math.ceil(Math.log(values.length) / Math.LN2) + 1;
+	}
+
+	function histogram() {
+	  var value = identity,
+	      domain = extent,
+	      threshold = sturges;
+
+	  function histogram(data) {
+	    var i,
+	        n = data.length,
+	        x,
+	        values = new Array(n);
+
+	    for (i = 0; i < n; ++i) {
+	      values[i] = value(data[i], i, data);
+	    }
+
+	    var xz = domain(values),
+	        x0 = xz[0],
+	        x1 = xz[1],
+	        tz = threshold(values, x0, x1);
+
+	    // Convert number of thresholds into uniform thresholds.
+	    if (!Array.isArray(tz)) {
+	      tz = tickStep(x0, x1, tz);
+	      tz = range(Math.ceil(x0 / tz) * tz, x1, tz); // exclusive
+	    }
+
+	    // Remove any thresholds outside the domain.
+	    var m = tz.length;
+	    while (tz[0] <= x0) tz.shift(), --m;
+	    while (tz[m - 1] > x1) tz.pop(), --m;
+
+	    var bins = new Array(m + 1),
+	        bin;
+
+	    // Initialize bins.
+	    for (i = 0; i <= m; ++i) {
+	      bin = bins[i] = [];
+	      bin.x0 = i > 0 ? tz[i - 1] : x0;
+	      bin.x1 = i < m ? tz[i] : x1;
+	    }
+
+	    // Assign data to bins by value, ignoring any outside the domain.
+	    for (i = 0; i < n; ++i) {
+	      x = values[i];
+	      if (x0 <= x && x <= x1) {
+	        bins[bisectRight(tz, x, 0, m)].push(data[i]);
+	      }
+	    }
+
+	    return bins;
+	  }
+
+	  histogram.value = function(_) {
+	    return arguments.length ? (value = typeof _ === "function" ? _ : constant(_), histogram) : value;
+	  };
+
+	  histogram.domain = function(_) {
+	    return arguments.length ? (domain = typeof _ === "function" ? _ : constant([_[0], _[1]]), histogram) : domain;
+	  };
+
+	  histogram.thresholds = function(_) {
+	    return arguments.length ? (threshold = typeof _ === "function" ? _ : Array.isArray(_) ? constant(slice.call(_)) : constant(_), histogram) : threshold;
+	  };
+
+	  return histogram;
+	}
+
+	function quantile(values, p, valueof) {
+	  if (valueof == null) valueof = number;
+	  if (!(n = values.length)) return;
+	  if ((p = +p) <= 0 || n < 2) return +valueof(values[0], 0, values);
+	  if (p >= 1) return +valueof(values[n - 1], n - 1, values);
+	  var n,
+	      i = (n - 1) * p,
+	      i0 = Math.floor(i),
+	      value0 = +valueof(values[i0], i0, values),
+	      value1 = +valueof(values[i0 + 1], i0 + 1, values);
+	  return value0 + (value1 - value0) * (i - i0);
+	}
+
+	function freedmanDiaconis(values, min, max) {
+	  values = map.call(values, number).sort(ascending);
+	  return Math.ceil((max - min) / (2 * (quantile(values, 0.75) - quantile(values, 0.25)) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function scott(values, min, max) {
+	  return Math.ceil((max - min) / (3.5 * deviation(values) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function max(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return max;
+	}
+
+	function mean(values, valueof) {
+	  var n = values.length,
+	      m = n,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  if (m) return sum / m;
+	}
+
+	function median(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      numbers = [];
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  return quantile(numbers.sort(ascending), 0.5);
+	}
+
+	function merge(arrays) {
+	  var n = arrays.length,
+	      m,
+	      i = -1,
+	      j = 0,
+	      merged,
+	      array;
+
+	  while (++i < n) j += arrays[i].length;
+	  merged = new Array(j);
+
+	  while (--n >= 0) {
+	    array = arrays[n];
+	    m = array.length;
+	    while (--m >= 0) {
+	      merged[--j] = array[m];
+	    }
+	  }
+
+	  return merged;
+	}
+
+	function min(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return min;
+	}
+
+	function permute(array, indexes) {
+	  var i = indexes.length, permutes = new Array(i);
+	  while (i--) permutes[i] = array[indexes[i]];
+	  return permutes;
+	}
+
+	function scan(values, compare) {
+	  if (!(n = values.length)) return;
+	  var n,
+	      i = 0,
+	      j = 0,
+	      xi,
+	      xj = values[j];
+
+	  if (compare == null) compare = ascending;
+
+	  while (++i < n) {
+	    if (compare(xi = values[i], xj) < 0 || compare(xj, xj) !== 0) {
+	      xj = xi, j = i;
+	    }
+	  }
+
+	  if (compare(xj, xj) === 0) return j;
+	}
+
+	function shuffle(array, i0, i1) {
+	  var m = (i1 == null ? array.length : i1) - (i0 = i0 == null ? 0 : +i0),
+	      t,
+	      i;
+
+	  while (m) {
+	    i = Math.random() * m-- | 0;
+	    t = array[m + i0];
+	    array[m + i0] = array[i + i0];
+	    array[i + i0] = t;
+	  }
+
+	  return array;
+	}
+
+	function sum(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (value = +values[i]) sum += value; // Note: zero and null are equivalent.
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (value = +valueof(values[i], i, values)) sum += value;
+	    }
+	  }
+
+	  return sum;
+	}
+
+	function transpose(matrix) {
+	  if (!(n = matrix.length)) return [];
+	  for (var i = -1, m = min(matrix, length), transpose = new Array(m); ++i < m;) {
+	    for (var j = -1, n, row = transpose[i] = new Array(n); ++j < n;) {
+	      row[j] = matrix[j][i];
+	    }
+	  }
+	  return transpose;
+	}
+
+	function length(d) {
+	  return d.length;
+	}
+
+	function zip() {
+	  return transpose(arguments);
+	}
+
+	exports.bisect = bisectRight;
+	exports.bisectRight = bisectRight;
+	exports.bisectLeft = bisectLeft;
+	exports.ascending = ascending;
+	exports.bisector = bisector;
+	exports.cross = cross;
+	exports.descending = descending;
+	exports.deviation = deviation;
+	exports.extent = extent;
+	exports.histogram = histogram;
+	exports.thresholdFreedmanDiaconis = freedmanDiaconis;
+	exports.thresholdScott = scott;
+	exports.thresholdSturges = sturges;
+	exports.max = max;
+	exports.mean = mean;
+	exports.median = median;
+	exports.merge = merge;
+	exports.min = min;
+	exports.pairs = pairs;
+	exports.permute = permute;
+	exports.quantile = quantile;
+	exports.range = range;
+	exports.scan = scan;
+	exports.shuffle = shuffle;
+	exports.sum = sum;
+	exports.ticks = ticks;
+	exports.tickIncrement = tickIncrement;
+	exports.tickStep = tickStep;
+	exports.transpose = transpose;
+	exports.variance = variance;
+	exports.zip = zip;
+
+	Object.defineProperty(exports, '__esModule', { value: true });
+
+	})));
+
+
+/***/ }),
+/* 22 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-dsv/ v1.1.1 Copyright 2019 Mike Bostock
@@ -17511,12 +18730,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 21 */
+/* 23 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-fetch/ v1.1.2 Copyright 2018 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(20)) :
+	 true ? factory(exports, __webpack_require__(22)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-dsv'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3));
 	}(this, (function (exports,d3Dsv) { 'use strict';
@@ -17619,12 +18838,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 22 */
+/* 24 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-force/ v1.2.1 Copyright 2019 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(23), __webpack_require__(18), __webpack_require__(9), __webpack_require__(14)) :
+	 true ? factory(exports, __webpack_require__(25), __webpack_require__(19), __webpack_require__(9), __webpack_require__(14)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-quadtree', 'd3-collection', 'd3-dispatch', 'd3-timer'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3,global.d3,global.d3,global.d3));
 	}(this, (function (exports,d3Quadtree,d3Collection,d3Dispatch,d3Timer) { 'use strict';
@@ -18293,7 +19512,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 23 */
+/* 25 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-quadtree/ v1.0.6 Copyright 2019 Mike Bostock
@@ -18718,7 +19937,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 24 */
+/* 26 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-format/ v1.3.2 Copyright 2018 Mike Bostock
@@ -19044,12 +20263,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 25 */
+/* 27 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-geo/ v1.11.3 Copyright 2018 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(5)) :
+	 true ? factory(exports, __webpack_require__(28)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-array'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3));
 	}(this, (function (exports,d3Array) { 'use strict';
@@ -22153,7 +23372,603 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 26 */
+/* 28 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	// https://d3js.org/d3-array/ v1.2.4 Copyright 2018 Mike Bostock
+	(function (global, factory) {
+	 true ? factory(exports) :
+	typeof define === 'function' && define.amd ? define(['exports'], factory) :
+	(factory((global.d3 = global.d3 || {})));
+	}(this, (function (exports) { 'use strict';
+
+	function ascending(a, b) {
+	  return a < b ? -1 : a > b ? 1 : a >= b ? 0 : NaN;
+	}
+
+	function bisector(compare) {
+	  if (compare.length === 1) compare = ascendingComparator(compare);
+	  return {
+	    left: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) < 0) lo = mid + 1;
+	        else hi = mid;
+	      }
+	      return lo;
+	    },
+	    right: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) > 0) hi = mid;
+	        else lo = mid + 1;
+	      }
+	      return lo;
+	    }
+	  };
+	}
+
+	function ascendingComparator(f) {
+	  return function(d, x) {
+	    return ascending(f(d), x);
+	  };
+	}
+
+	var ascendingBisect = bisector(ascending);
+	var bisectRight = ascendingBisect.right;
+	var bisectLeft = ascendingBisect.left;
+
+	function pairs(array, f) {
+	  if (f == null) f = pair;
+	  var i = 0, n = array.length - 1, p = array[0], pairs = new Array(n < 0 ? 0 : n);
+	  while (i < n) pairs[i] = f(p, p = array[++i]);
+	  return pairs;
+	}
+
+	function pair(a, b) {
+	  return [a, b];
+	}
+
+	function cross(values0, values1, reduce) {
+	  var n0 = values0.length,
+	      n1 = values1.length,
+	      values = new Array(n0 * n1),
+	      i0,
+	      i1,
+	      i,
+	      value0;
+
+	  if (reduce == null) reduce = pair;
+
+	  for (i0 = i = 0; i0 < n0; ++i0) {
+	    for (value0 = values0[i0], i1 = 0; i1 < n1; ++i1, ++i) {
+	      values[i] = reduce(value0, values1[i1]);
+	    }
+	  }
+
+	  return values;
+	}
+
+	function descending(a, b) {
+	  return b < a ? -1 : b > a ? 1 : b >= a ? 0 : NaN;
+	}
+
+	function number(x) {
+	  return x === null ? NaN : +x;
+	}
+
+	function variance(values, valueof) {
+	  var n = values.length,
+	      m = 0,
+	      i = -1,
+	      mean = 0,
+	      value,
+	      delta,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  if (m > 1) return sum / (m - 1);
+	}
+
+	function deviation(array, f) {
+	  var v = variance(array, f);
+	  return v ? Math.sqrt(v) : v;
+	}
+
+	function extent(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return [min, max];
+	}
+
+	var array = Array.prototype;
+
+	var slice = array.slice;
+	var map = array.map;
+
+	function constant(x) {
+	  return function() {
+	    return x;
+	  };
+	}
+
+	function identity(x) {
+	  return x;
+	}
+
+	function range(start, stop, step) {
+	  start = +start, stop = +stop, step = (n = arguments.length) < 2 ? (stop = start, start = 0, 1) : n < 3 ? 1 : +step;
+
+	  var i = -1,
+	      n = Math.max(0, Math.ceil((stop - start) / step)) | 0,
+	      range = new Array(n);
+
+	  while (++i < n) {
+	    range[i] = start + i * step;
+	  }
+
+	  return range;
+	}
+
+	var e10 = Math.sqrt(50),
+	    e5 = Math.sqrt(10),
+	    e2 = Math.sqrt(2);
+
+	function ticks(start, stop, count) {
+	  var reverse,
+	      i = -1,
+	      n,
+	      ticks,
+	      step;
+
+	  stop = +stop, start = +start, count = +count;
+	  if (start === stop && count > 0) return [start];
+	  if (reverse = stop < start) n = start, start = stop, stop = n;
+	  if ((step = tickIncrement(start, stop, count)) === 0 || !isFinite(step)) return [];
+
+	  if (step > 0) {
+	    start = Math.ceil(start / step);
+	    stop = Math.floor(stop / step);
+	    ticks = new Array(n = Math.ceil(stop - start + 1));
+	    while (++i < n) ticks[i] = (start + i) * step;
+	  } else {
+	    start = Math.floor(start * step);
+	    stop = Math.ceil(stop * step);
+	    ticks = new Array(n = Math.ceil(start - stop + 1));
+	    while (++i < n) ticks[i] = (start - i) / step;
+	  }
+
+	  if (reverse) ticks.reverse();
+
+	  return ticks;
+	}
+
+	function tickIncrement(start, stop, count) {
+	  var step = (stop - start) / Math.max(0, count),
+	      power = Math.floor(Math.log(step) / Math.LN10),
+	      error = step / Math.pow(10, power);
+	  return power >= 0
+	      ? (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1) * Math.pow(10, power)
+	      : -Math.pow(10, -power) / (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1);
+	}
+
+	function tickStep(start, stop, count) {
+	  var step0 = Math.abs(stop - start) / Math.max(0, count),
+	      step1 = Math.pow(10, Math.floor(Math.log(step0) / Math.LN10)),
+	      error = step0 / step1;
+	  if (error >= e10) step1 *= 10;
+	  else if (error >= e5) step1 *= 5;
+	  else if (error >= e2) step1 *= 2;
+	  return stop < start ? -step1 : step1;
+	}
+
+	function sturges(values) {
+	  return Math.ceil(Math.log(values.length) / Math.LN2) + 1;
+	}
+
+	function histogram() {
+	  var value = identity,
+	      domain = extent,
+	      threshold = sturges;
+
+	  function histogram(data) {
+	    var i,
+	        n = data.length,
+	        x,
+	        values = new Array(n);
+
+	    for (i = 0; i < n; ++i) {
+	      values[i] = value(data[i], i, data);
+	    }
+
+	    var xz = domain(values),
+	        x0 = xz[0],
+	        x1 = xz[1],
+	        tz = threshold(values, x0, x1);
+
+	    // Convert number of thresholds into uniform thresholds.
+	    if (!Array.isArray(tz)) {
+	      tz = tickStep(x0, x1, tz);
+	      tz = range(Math.ceil(x0 / tz) * tz, x1, tz); // exclusive
+	    }
+
+	    // Remove any thresholds outside the domain.
+	    var m = tz.length;
+	    while (tz[0] <= x0) tz.shift(), --m;
+	    while (tz[m - 1] > x1) tz.pop(), --m;
+
+	    var bins = new Array(m + 1),
+	        bin;
+
+	    // Initialize bins.
+	    for (i = 0; i <= m; ++i) {
+	      bin = bins[i] = [];
+	      bin.x0 = i > 0 ? tz[i - 1] : x0;
+	      bin.x1 = i < m ? tz[i] : x1;
+	    }
+
+	    // Assign data to bins by value, ignoring any outside the domain.
+	    for (i = 0; i < n; ++i) {
+	      x = values[i];
+	      if (x0 <= x && x <= x1) {
+	        bins[bisectRight(tz, x, 0, m)].push(data[i]);
+	      }
+	    }
+
+	    return bins;
+	  }
+
+	  histogram.value = function(_) {
+	    return arguments.length ? (value = typeof _ === "function" ? _ : constant(_), histogram) : value;
+	  };
+
+	  histogram.domain = function(_) {
+	    return arguments.length ? (domain = typeof _ === "function" ? _ : constant([_[0], _[1]]), histogram) : domain;
+	  };
+
+	  histogram.thresholds = function(_) {
+	    return arguments.length ? (threshold = typeof _ === "function" ? _ : Array.isArray(_) ? constant(slice.call(_)) : constant(_), histogram) : threshold;
+	  };
+
+	  return histogram;
+	}
+
+	function quantile(values, p, valueof) {
+	  if (valueof == null) valueof = number;
+	  if (!(n = values.length)) return;
+	  if ((p = +p) <= 0 || n < 2) return +valueof(values[0], 0, values);
+	  if (p >= 1) return +valueof(values[n - 1], n - 1, values);
+	  var n,
+	      i = (n - 1) * p,
+	      i0 = Math.floor(i),
+	      value0 = +valueof(values[i0], i0, values),
+	      value1 = +valueof(values[i0 + 1], i0 + 1, values);
+	  return value0 + (value1 - value0) * (i - i0);
+	}
+
+	function freedmanDiaconis(values, min, max) {
+	  values = map.call(values, number).sort(ascending);
+	  return Math.ceil((max - min) / (2 * (quantile(values, 0.75) - quantile(values, 0.25)) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function scott(values, min, max) {
+	  return Math.ceil((max - min) / (3.5 * deviation(values) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function max(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return max;
+	}
+
+	function mean(values, valueof) {
+	  var n = values.length,
+	      m = n,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  if (m) return sum / m;
+	}
+
+	function median(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      numbers = [];
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  return quantile(numbers.sort(ascending), 0.5);
+	}
+
+	function merge(arrays) {
+	  var n = arrays.length,
+	      m,
+	      i = -1,
+	      j = 0,
+	      merged,
+	      array;
+
+	  while (++i < n) j += arrays[i].length;
+	  merged = new Array(j);
+
+	  while (--n >= 0) {
+	    array = arrays[n];
+	    m = array.length;
+	    while (--m >= 0) {
+	      merged[--j] = array[m];
+	    }
+	  }
+
+	  return merged;
+	}
+
+	function min(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return min;
+	}
+
+	function permute(array, indexes) {
+	  var i = indexes.length, permutes = new Array(i);
+	  while (i--) permutes[i] = array[indexes[i]];
+	  return permutes;
+	}
+
+	function scan(values, compare) {
+	  if (!(n = values.length)) return;
+	  var n,
+	      i = 0,
+	      j = 0,
+	      xi,
+	      xj = values[j];
+
+	  if (compare == null) compare = ascending;
+
+	  while (++i < n) {
+	    if (compare(xi = values[i], xj) < 0 || compare(xj, xj) !== 0) {
+	      xj = xi, j = i;
+	    }
+	  }
+
+	  if (compare(xj, xj) === 0) return j;
+	}
+
+	function shuffle(array, i0, i1) {
+	  var m = (i1 == null ? array.length : i1) - (i0 = i0 == null ? 0 : +i0),
+	      t,
+	      i;
+
+	  while (m) {
+	    i = Math.random() * m-- | 0;
+	    t = array[m + i0];
+	    array[m + i0] = array[i + i0];
+	    array[i + i0] = t;
+	  }
+
+	  return array;
+	}
+
+	function sum(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (value = +values[i]) sum += value; // Note: zero and null are equivalent.
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (value = +valueof(values[i], i, values)) sum += value;
+	    }
+	  }
+
+	  return sum;
+	}
+
+	function transpose(matrix) {
+	  if (!(n = matrix.length)) return [];
+	  for (var i = -1, m = min(matrix, length), transpose = new Array(m); ++i < m;) {
+	    for (var j = -1, n, row = transpose[i] = new Array(n); ++j < n;) {
+	      row[j] = matrix[j][i];
+	    }
+	  }
+	  return transpose;
+	}
+
+	function length(d) {
+	  return d.length;
+	}
+
+	function zip() {
+	  return transpose(arguments);
+	}
+
+	exports.bisect = bisectRight;
+	exports.bisectRight = bisectRight;
+	exports.bisectLeft = bisectLeft;
+	exports.ascending = ascending;
+	exports.bisector = bisector;
+	exports.cross = cross;
+	exports.descending = descending;
+	exports.deviation = deviation;
+	exports.extent = extent;
+	exports.histogram = histogram;
+	exports.thresholdFreedmanDiaconis = freedmanDiaconis;
+	exports.thresholdScott = scott;
+	exports.thresholdSturges = sturges;
+	exports.max = max;
+	exports.mean = mean;
+	exports.median = median;
+	exports.merge = merge;
+	exports.min = min;
+	exports.pairs = pairs;
+	exports.permute = permute;
+	exports.quantile = quantile;
+	exports.range = range;
+	exports.scan = scan;
+	exports.shuffle = shuffle;
+	exports.sum = sum;
+	exports.ticks = ticks;
+	exports.tickIncrement = tickIncrement;
+	exports.tickStep = tickStep;
+	exports.transpose = transpose;
+	exports.variance = variance;
+	exports.zip = zip;
+
+	Object.defineProperty(exports, '__esModule', { value: true });
+
+	})));
+
+
+/***/ }),
+/* 29 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-hierarchy/ v1.1.8 Copyright 2018 Mike Bostock
@@ -23449,7 +25264,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 27 */
+/* 30 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-polygon/ v1.0.5 Copyright 2018 Mike Bostock
@@ -23605,7 +25420,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 28 */
+/* 31 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-random/ v1.1.2 Copyright 2018 Mike Bostock
@@ -23726,12 +25541,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 29 */
+/* 32 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-scale/ v2.2.2 Copyright 2019 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(18), __webpack_require__(5), __webpack_require__(11), __webpack_require__(24), __webpack_require__(30), __webpack_require__(31)) :
+	 true ? factory(exports, __webpack_require__(19), __webpack_require__(33), __webpack_require__(11), __webpack_require__(26), __webpack_require__(34), __webpack_require__(35)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-collection', 'd3-array', 'd3-interpolate', 'd3-format', 'd3-time', 'd3-time-format'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3,global.d3,global.d3,global.d3,global.d3,global.d3));
 	}(this, (function (exports,d3Collection,d3Array,d3Interpolate,d3Format,d3Time,d3TimeFormat) { 'use strict';
@@ -24897,7 +26712,603 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 30 */
+/* 33 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	// https://d3js.org/d3-array/ v1.2.4 Copyright 2018 Mike Bostock
+	(function (global, factory) {
+	 true ? factory(exports) :
+	typeof define === 'function' && define.amd ? define(['exports'], factory) :
+	(factory((global.d3 = global.d3 || {})));
+	}(this, (function (exports) { 'use strict';
+
+	function ascending(a, b) {
+	  return a < b ? -1 : a > b ? 1 : a >= b ? 0 : NaN;
+	}
+
+	function bisector(compare) {
+	  if (compare.length === 1) compare = ascendingComparator(compare);
+	  return {
+	    left: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) < 0) lo = mid + 1;
+	        else hi = mid;
+	      }
+	      return lo;
+	    },
+	    right: function(a, x, lo, hi) {
+	      if (lo == null) lo = 0;
+	      if (hi == null) hi = a.length;
+	      while (lo < hi) {
+	        var mid = lo + hi >>> 1;
+	        if (compare(a[mid], x) > 0) hi = mid;
+	        else lo = mid + 1;
+	      }
+	      return lo;
+	    }
+	  };
+	}
+
+	function ascendingComparator(f) {
+	  return function(d, x) {
+	    return ascending(f(d), x);
+	  };
+	}
+
+	var ascendingBisect = bisector(ascending);
+	var bisectRight = ascendingBisect.right;
+	var bisectLeft = ascendingBisect.left;
+
+	function pairs(array, f) {
+	  if (f == null) f = pair;
+	  var i = 0, n = array.length - 1, p = array[0], pairs = new Array(n < 0 ? 0 : n);
+	  while (i < n) pairs[i] = f(p, p = array[++i]);
+	  return pairs;
+	}
+
+	function pair(a, b) {
+	  return [a, b];
+	}
+
+	function cross(values0, values1, reduce) {
+	  var n0 = values0.length,
+	      n1 = values1.length,
+	      values = new Array(n0 * n1),
+	      i0,
+	      i1,
+	      i,
+	      value0;
+
+	  if (reduce == null) reduce = pair;
+
+	  for (i0 = i = 0; i0 < n0; ++i0) {
+	    for (value0 = values0[i0], i1 = 0; i1 < n1; ++i1, ++i) {
+	      values[i] = reduce(value0, values1[i1]);
+	    }
+	  }
+
+	  return values;
+	}
+
+	function descending(a, b) {
+	  return b < a ? -1 : b > a ? 1 : b >= a ? 0 : NaN;
+	}
+
+	function number(x) {
+	  return x === null ? NaN : +x;
+	}
+
+	function variance(values, valueof) {
+	  var n = values.length,
+	      m = 0,
+	      i = -1,
+	      mean = 0,
+	      value,
+	      delta,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        delta = value - mean;
+	        mean += delta / ++m;
+	        sum += delta * (value - mean);
+	      }
+	    }
+	  }
+
+	  if (m > 1) return sum / (m - 1);
+	}
+
+	function deviation(array, f) {
+	  var v = variance(array, f);
+	  return v ? Math.sqrt(v) : v;
+	}
+
+	function extent(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null) {
+	            if (min > value) min = value;
+	            if (max < value) max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return [min, max];
+	}
+
+	var array = Array.prototype;
+
+	var slice = array.slice;
+	var map = array.map;
+
+	function constant(x) {
+	  return function() {
+	    return x;
+	  };
+	}
+
+	function identity(x) {
+	  return x;
+	}
+
+	function range(start, stop, step) {
+	  start = +start, stop = +stop, step = (n = arguments.length) < 2 ? (stop = start, start = 0, 1) : n < 3 ? 1 : +step;
+
+	  var i = -1,
+	      n = Math.max(0, Math.ceil((stop - start) / step)) | 0,
+	      range = new Array(n);
+
+	  while (++i < n) {
+	    range[i] = start + i * step;
+	  }
+
+	  return range;
+	}
+
+	var e10 = Math.sqrt(50),
+	    e5 = Math.sqrt(10),
+	    e2 = Math.sqrt(2);
+
+	function ticks(start, stop, count) {
+	  var reverse,
+	      i = -1,
+	      n,
+	      ticks,
+	      step;
+
+	  stop = +stop, start = +start, count = +count;
+	  if (start === stop && count > 0) return [start];
+	  if (reverse = stop < start) n = start, start = stop, stop = n;
+	  if ((step = tickIncrement(start, stop, count)) === 0 || !isFinite(step)) return [];
+
+	  if (step > 0) {
+	    start = Math.ceil(start / step);
+	    stop = Math.floor(stop / step);
+	    ticks = new Array(n = Math.ceil(stop - start + 1));
+	    while (++i < n) ticks[i] = (start + i) * step;
+	  } else {
+	    start = Math.floor(start * step);
+	    stop = Math.ceil(stop * step);
+	    ticks = new Array(n = Math.ceil(start - stop + 1));
+	    while (++i < n) ticks[i] = (start - i) / step;
+	  }
+
+	  if (reverse) ticks.reverse();
+
+	  return ticks;
+	}
+
+	function tickIncrement(start, stop, count) {
+	  var step = (stop - start) / Math.max(0, count),
+	      power = Math.floor(Math.log(step) / Math.LN10),
+	      error = step / Math.pow(10, power);
+	  return power >= 0
+	      ? (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1) * Math.pow(10, power)
+	      : -Math.pow(10, -power) / (error >= e10 ? 10 : error >= e5 ? 5 : error >= e2 ? 2 : 1);
+	}
+
+	function tickStep(start, stop, count) {
+	  var step0 = Math.abs(stop - start) / Math.max(0, count),
+	      step1 = Math.pow(10, Math.floor(Math.log(step0) / Math.LN10)),
+	      error = step0 / step1;
+	  if (error >= e10) step1 *= 10;
+	  else if (error >= e5) step1 *= 5;
+	  else if (error >= e2) step1 *= 2;
+	  return stop < start ? -step1 : step1;
+	}
+
+	function sturges(values) {
+	  return Math.ceil(Math.log(values.length) / Math.LN2) + 1;
+	}
+
+	function histogram() {
+	  var value = identity,
+	      domain = extent,
+	      threshold = sturges;
+
+	  function histogram(data) {
+	    var i,
+	        n = data.length,
+	        x,
+	        values = new Array(n);
+
+	    for (i = 0; i < n; ++i) {
+	      values[i] = value(data[i], i, data);
+	    }
+
+	    var xz = domain(values),
+	        x0 = xz[0],
+	        x1 = xz[1],
+	        tz = threshold(values, x0, x1);
+
+	    // Convert number of thresholds into uniform thresholds.
+	    if (!Array.isArray(tz)) {
+	      tz = tickStep(x0, x1, tz);
+	      tz = range(Math.ceil(x0 / tz) * tz, x1, tz); // exclusive
+	    }
+
+	    // Remove any thresholds outside the domain.
+	    var m = tz.length;
+	    while (tz[0] <= x0) tz.shift(), --m;
+	    while (tz[m - 1] > x1) tz.pop(), --m;
+
+	    var bins = new Array(m + 1),
+	        bin;
+
+	    // Initialize bins.
+	    for (i = 0; i <= m; ++i) {
+	      bin = bins[i] = [];
+	      bin.x0 = i > 0 ? tz[i - 1] : x0;
+	      bin.x1 = i < m ? tz[i] : x1;
+	    }
+
+	    // Assign data to bins by value, ignoring any outside the domain.
+	    for (i = 0; i < n; ++i) {
+	      x = values[i];
+	      if (x0 <= x && x <= x1) {
+	        bins[bisectRight(tz, x, 0, m)].push(data[i]);
+	      }
+	    }
+
+	    return bins;
+	  }
+
+	  histogram.value = function(_) {
+	    return arguments.length ? (value = typeof _ === "function" ? _ : constant(_), histogram) : value;
+	  };
+
+	  histogram.domain = function(_) {
+	    return arguments.length ? (domain = typeof _ === "function" ? _ : constant([_[0], _[1]]), histogram) : domain;
+	  };
+
+	  histogram.thresholds = function(_) {
+	    return arguments.length ? (threshold = typeof _ === "function" ? _ : Array.isArray(_) ? constant(slice.call(_)) : constant(_), histogram) : threshold;
+	  };
+
+	  return histogram;
+	}
+
+	function quantile(values, p, valueof) {
+	  if (valueof == null) valueof = number;
+	  if (!(n = values.length)) return;
+	  if ((p = +p) <= 0 || n < 2) return +valueof(values[0], 0, values);
+	  if (p >= 1) return +valueof(values[n - 1], n - 1, values);
+	  var n,
+	      i = (n - 1) * p,
+	      i0 = Math.floor(i),
+	      value0 = +valueof(values[i0], i0, values),
+	      value1 = +valueof(values[i0 + 1], i0 + 1, values);
+	  return value0 + (value1 - value0) * (i - i0);
+	}
+
+	function freedmanDiaconis(values, min, max) {
+	  values = map.call(values, number).sort(ascending);
+	  return Math.ceil((max - min) / (2 * (quantile(values, 0.75) - quantile(values, 0.25)) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function scott(values, min, max) {
+	  return Math.ceil((max - min) / (3.5 * deviation(values) * Math.pow(values.length, -1 / 3)));
+	}
+
+	function max(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      max;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        max = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && value > max) {
+	            max = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return max;
+	}
+
+	function mean(values, valueof) {
+	  var n = values.length,
+	      m = n,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) sum += value;
+	      else --m;
+	    }
+	  }
+
+	  if (m) return sum / m;
+	}
+
+	function median(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      numbers = [];
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (!isNaN(value = number(values[i]))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (!isNaN(value = number(valueof(values[i], i, values)))) {
+	        numbers.push(value);
+	      }
+	    }
+	  }
+
+	  return quantile(numbers.sort(ascending), 0.5);
+	}
+
+	function merge(arrays) {
+	  var n = arrays.length,
+	      m,
+	      i = -1,
+	      j = 0,
+	      merged,
+	      array;
+
+	  while (++i < n) j += arrays[i].length;
+	  merged = new Array(j);
+
+	  while (--n >= 0) {
+	    array = arrays[n];
+	    m = array.length;
+	    while (--m >= 0) {
+	      merged[--j] = array[m];
+	    }
+	  }
+
+	  return merged;
+	}
+
+	function min(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      min;
+
+	  if (valueof == null) {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = values[i]) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = values[i]) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  else {
+	    while (++i < n) { // Find the first comparable value.
+	      if ((value = valueof(values[i], i, values)) != null && value >= value) {
+	        min = value;
+	        while (++i < n) { // Compare the remaining values.
+	          if ((value = valueof(values[i], i, values)) != null && min > value) {
+	            min = value;
+	          }
+	        }
+	      }
+	    }
+	  }
+
+	  return min;
+	}
+
+	function permute(array, indexes) {
+	  var i = indexes.length, permutes = new Array(i);
+	  while (i--) permutes[i] = array[indexes[i]];
+	  return permutes;
+	}
+
+	function scan(values, compare) {
+	  if (!(n = values.length)) return;
+	  var n,
+	      i = 0,
+	      j = 0,
+	      xi,
+	      xj = values[j];
+
+	  if (compare == null) compare = ascending;
+
+	  while (++i < n) {
+	    if (compare(xi = values[i], xj) < 0 || compare(xj, xj) !== 0) {
+	      xj = xi, j = i;
+	    }
+	  }
+
+	  if (compare(xj, xj) === 0) return j;
+	}
+
+	function shuffle(array, i0, i1) {
+	  var m = (i1 == null ? array.length : i1) - (i0 = i0 == null ? 0 : +i0),
+	      t,
+	      i;
+
+	  while (m) {
+	    i = Math.random() * m-- | 0;
+	    t = array[m + i0];
+	    array[m + i0] = array[i + i0];
+	    array[i + i0] = t;
+	  }
+
+	  return array;
+	}
+
+	function sum(values, valueof) {
+	  var n = values.length,
+	      i = -1,
+	      value,
+	      sum = 0;
+
+	  if (valueof == null) {
+	    while (++i < n) {
+	      if (value = +values[i]) sum += value; // Note: zero and null are equivalent.
+	    }
+	  }
+
+	  else {
+	    while (++i < n) {
+	      if (value = +valueof(values[i], i, values)) sum += value;
+	    }
+	  }
+
+	  return sum;
+	}
+
+	function transpose(matrix) {
+	  if (!(n = matrix.length)) return [];
+	  for (var i = -1, m = min(matrix, length), transpose = new Array(m); ++i < m;) {
+	    for (var j = -1, n, row = transpose[i] = new Array(n); ++j < n;) {
+	      row[j] = matrix[j][i];
+	    }
+	  }
+	  return transpose;
+	}
+
+	function length(d) {
+	  return d.length;
+	}
+
+	function zip() {
+	  return transpose(arguments);
+	}
+
+	exports.bisect = bisectRight;
+	exports.bisectRight = bisectRight;
+	exports.bisectLeft = bisectLeft;
+	exports.ascending = ascending;
+	exports.bisector = bisector;
+	exports.cross = cross;
+	exports.descending = descending;
+	exports.deviation = deviation;
+	exports.extent = extent;
+	exports.histogram = histogram;
+	exports.thresholdFreedmanDiaconis = freedmanDiaconis;
+	exports.thresholdScott = scott;
+	exports.thresholdSturges = sturges;
+	exports.max = max;
+	exports.mean = mean;
+	exports.median = median;
+	exports.merge = merge;
+	exports.min = min;
+	exports.pairs = pairs;
+	exports.permute = permute;
+	exports.quantile = quantile;
+	exports.range = range;
+	exports.scan = scan;
+	exports.shuffle = shuffle;
+	exports.sum = sum;
+	exports.ticks = ticks;
+	exports.tickIncrement = tickIncrement;
+	exports.tickStep = tickStep;
+	exports.transpose = transpose;
+	exports.variance = variance;
+	exports.zip = zip;
+
+	Object.defineProperty(exports, '__esModule', { value: true });
+
+	})));
+
+
+/***/ }),
+/* 34 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-time/ v1.0.11 Copyright 2019 Mike Bostock
@@ -25274,12 +27685,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 31 */
+/* 35 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-time-format/ v2.1.3 Copyright 2018 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(30)) :
+	 true ? factory(exports, __webpack_require__(34)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-time'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3));
 	}(this, (function (exports,d3Time) { 'use strict';
@@ -25964,7 +28375,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 32 */
+/* 36 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-scale-chromatic/ v1.3.3 Copyright 2018 Mike Bostock
@@ -26468,12 +28879,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 33 */
+/* 37 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-shape/ v1.3.5 Copyright 2019 Mike Bostock
 	(function (global, factory) {
-	 true ? factory(exports, __webpack_require__(17)) :
+	 true ? factory(exports, __webpack_require__(18)) :
 	typeof define === 'function' && define.amd ? define(['exports', 'd3-path'], factory) :
 	(factory((global.d3 = global.d3 || {}),global.d3));
 	}(this, (function (exports,d3Path) { 'use strict';
@@ -28423,7 +30834,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 34 */
+/* 38 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-voronoi/ v1.1.4 Copyright 2018 Mike Bostock
@@ -29428,7 +31839,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 
 /***/ }),
-/* 35 */
+/* 39 */
 /***/ (function(module, exports, __webpack_require__) {
 
 	// https://d3js.org/d3-zoom/ v1.7.3 Copyright 2018 Mike Bostock
