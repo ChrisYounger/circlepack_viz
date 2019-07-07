@@ -59,7 +59,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	        initialize: function() {
 	            SplunkVisualizationBase.prototype.initialize.apply(this, arguments);
 	            var viz = this;
-	            viz.instance_id = Math.round(Math.random() * 1000000);
+	            viz.instance_id = "circlepack_viz_" + Math.round(Math.random() * 1000000);
 	            viz.instance_id_ctr = 0;
 	            var theme = 'light'; 
 	            if (typeof vizUtils.getCurrentTheme === "function") {
@@ -80,9 +80,12 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                labelsize: "100",
 	                colormode: "depth",
 	                labelcolor: "#000000",
+	                labelwrap: "on",
+	                labeltruncate: "on",
 	                packing: "circle",
 	                shadow: "show",
 	                onclick: "none",
+	                maxrows: "1500",
 	                coloroverride: "",
 	                color: "schemeCategory10"
 	            };
@@ -94,7 +97,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            }
 	            viz.config._coloroverride = {};
 	            if (viz.config.coloroverride.substr(0,1) === "{") {
-	                try{ viz.config._coloroverride = JSON.parse(viz.config.coloroverride) } catch(e) {}
+	                try{ viz.config._coloroverride = JSON.parse(viz.config.coloroverride); } catch(e) {}
 	            } else {
 	                var parts = viz.config.coloroverride.split(",");
 	                for (var i = 0; i+1 < parts.length; i+=2) {
@@ -116,6 +119,66 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 	        doDraw: function(){
 	            var viz = this;
+	            function tooltipCreate(d) {
+	                var parts = d.ancestors().map(function(d) { return d.data.name; }).reverse();
+	                var tt = $("<div></div>");
+	                for (var i = 1; i < parts.length; i++) {
+	                    $("<span></span>").text(parts[i]).appendTo(tt);
+	                    if (i < (parts.length - 1)) {
+	                        $("<span class='circlepack_viz-tooltip-divider'> / </span>").appendTo(tt);
+	                    }
+	                }
+	                $("<div></div>").text(format(d.value) + " - " + Math.round(d.value / total * 10000) / 100 + " %").appendTo(tt);
+	                viz.container_wrap_offset = viz.$container_wrap.offset();
+	                return tooltip.css("visibility", "visible").html(tt);
+	            }
+	            // move tooltip during mousemove
+	            function tooltipMove(event) {
+	                return tooltip.css({"top": (event.pageY - viz.container_wrap_offset.top - 30) + "px", "left": (event.pageX - viz.container_wrap_offset.left + 20) + "px"});
+	            }
+	            // hide our tooltip on mouseout
+	            function tooltiphide() {
+	                return tooltip.css("visibility", "hidden");
+	            }
+	            function zoomTo(v) {
+	                var k = Math.min(width, height) / v[2];
+	                view = v;
+	                label.attr("transform", function(d) { return "translate(" + ((d.x - v[0]) * k) + "," + ((d.y - v[1]) * k) + ")"; });
+	                node.attr("transform", function(d) { return "translate(" + ((d.x - v[0]) * k) + "," + ((d.y - v[1]) * k) +")"; });
+	                node.attr("r", function(d) { return d.r * k; });
+	            }
+	            function zoom(d) {
+	                focus = d;
+	                var transition = svg.transition()
+	                    .duration(d3.event.altKey ? 7500 : 750)
+	                    .tween("zoom", function(d) {
+	                        var i = d3.interpolateZoom(view, [focus.x, focus.y, focus.r * 2]);
+	                        return function(t) { zoomTo(i(t)); };
+	                    });
+	                label
+	                .filter(function(d) { return d.parent === focus || this.style.display === "inline"; })
+	                .transition(transition)
+	                    .style("fill-opacity", function(d) { return d.parent === focus ? 1 : 0; })
+	                    .on("start", function(d) { if (d.parent === focus) this.style.display = "inline"; })
+	                    .on("end", function(d) { if (d.parent !== focus) this.style.display = "none"; });
+	            }
+	            function pack(data) { 
+	                return d3.pack()
+	                    .size([width - 2, height - 2])
+	                    .padding(5)
+	                (d3.hierarchy(data)
+	                    .sum(function(d) { return d.value; })
+	                    .sort(function(a, b) {
+	                        // If need to add Rectangle packing try adding this
+	                        // https://observablehq.com/@mbostock/packing-circles-inside-a-rectangle
+	                        if (viz.config.packing === "circle") { 
+	                            return b.value - a.value;
+	                        } else {
+	                            return 0;
+	                        }
+	                    })
+	                );
+	            }
 	            // Dont draw unless this is a real element under body
 	            if (! viz.$container_wrap.parents().is("body")) {
 	                return;
@@ -124,12 +187,9 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                return;
 	            }
 	            var total = 0;
-	            for (var i = 0; i < viz.data.rows.length; i++) {
-	                total += Number(viz.data.rows[i][viz.data.rows[i].length-1]);
+	            for (var l = 0; l < viz.data.rows.length; l++) {
+	                total += Number(viz.data.rows[l][viz.data.rows[l].length-1]);
 	            }
-	            var data;
-	            var newData = [];
-	            var mapping = {};
 	            // Convert splunk tabular data to a heirachy format for d3
 	            var data = {"name": "root", "children": []};
 	            var drilldown, i, j, k;
@@ -137,8 +197,8 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            var validRows = 0;
 	            for (i = 0; i < viz.data.rows.length; i++) {
 	                var parts = viz.data.rows[i].slice();
-	                var size = parts.pop();
-	                if (size === "" || isNaN(Number(size))) {
+	                var nodesize = parts.pop();
+	                if (nodesize === "" || isNaN(Number(nodesize))) {
 	                    skippedRows++;
 	                    continue;
 	                } else {
@@ -159,7 +219,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    if (j + 1 < parts.length) {
 	                        // Not yet at the end of the sequence; move down the tree.
 	                        var foundChild = false;
-	                        for (var k = 0; k < children.length; k++) {
+	                        for (k = 0; k < children.length; k++) {
 	                            if (children[k].name == nodeName) {
 	                                childNode = children[k];
 	                                foundChild = true;
@@ -168,11 +228,11 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        }
 	                        // If we don't already have a child node for this branch, create it.
 	                        if (!foundChild) {
-	                        drilldown = {};
+	                            drilldown = {};
 	                            for (k = 0; k <= j; k++) {
 	                                drilldown[viz.data.fields[k].name] = viz.data.rows[i][k];
 	                            }
-	                            childNode = {"name": nodeName, color: first_col, drilldown: drilldown, "children": []};
+	                            childNode = {"name": nodeName, "color": first_col, "drilldown": drilldown, "children": []};
 	                            children.push(childNode);
 	                        }
 	                        currentNode = childNode;
@@ -182,7 +242,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                            drilldown[viz.data.fields[k].name] = viz.data.rows[i][k];
 	                        }
 	                        // Reached the end of the sequence; create a leaf node.
-	                        childNode = {"name": nodeName, color: first_col, drilldown: drilldown, "value": size};
+	                        childNode = {"name": nodeName, "color": first_col, "drilldown": drilldown, "value": nodesize};
 	                        children.push(childNode);
 	                    }
 	                }
@@ -190,40 +250,21 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            if (skippedRows) {
 	                console.log("Rows skipped because last column is not numeric: ", skippedRows);
 	            }
+	            //console.log("Valid rows: ", validRows);
 	            if (skippedRows && ! validRows) {
 	                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.</div>");
 	                return;
 	            }
-	            function tooltipCreate(d) {
-	                var parts = d.ancestors().map(d => d.data.name).reverse();
-	                var tt = $("<div></div>");
-	                for (var i = 1; i < parts.length; i++) {
-	                    $("<span></span>").text(parts[i]).appendTo(tt);
-	                    if (i < (parts.length - 1)) {
-	                        $("<span class='circlepack_viz-tooltip-divider'> / </span>").appendTo(tt);
-	                    }
-	                }
-	                $("<div></div>").text(format(d.value) + " - " + Math.round(d.value / total * 10000) / 100 + " %").appendTo(tt);
-	                var clientRectangle = svg_node[0].getBoundingClientRect();
-	                var clientRectangleWrap = viz.$container_wrap[0].getBoundingClientRect();
-	                viz.widthOffset = clientRectangle.x - clientRectangleWrap.x;
-	                return tooltip.css("visibility", "visible").html(tt);
+	            if (validRows > Number(viz.config.maxrows)) {
+	                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Too many rows of data (Total rows:" + validRows + ", Limit: " + viz.config.maxrows + "). </div>");
+	                return;
 	            }
-	            // move tooltip during mousemove
-	            function tooltipMove(event) {
-	                return tooltip.css("top", (event.offsetY - 30) + "px").css("left", (event.offsetX + viz.widthOffset + 20) + "px"); // 
-	            }
-	            // hide our tooltip on mouseout
-	            function tooltiphide() {
-	                return tooltip.css("visibility", "hidden");
-	            }
-
 	            var svg;
 	            var labelsize = Number(viz.config.labelsize) / 100 * 16;
 	            var format = d3.format(",d");
 	            var height = 800;
 	            var width = 800 * (viz.$container_wrap.width() / viz.$container_wrap.height());
-	            var radius, color, arc, partition;
+	            var color;
 	            svg = d3.create("svg")
 	                .style("font", labelsize + "px sans-serif")
 	                .style("box-sizing", "border-box");
@@ -232,33 +273,18 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            } else {
 	                svg.attr("viewBox", [0, 0, width, height]);
 	            }
-	            
 	            viz.$container_wrap.empty().append(svg.node());
 	            var svg_node = viz.$container_wrap.children();
 	            var size = Math.min(viz.$container_wrap.height(),viz.$container_wrap.width());
 	            svg.attr("width", (viz.$container_wrap.width() - 20) + "px").attr("height", (viz.$container_wrap.height() - 20) + "px");
 	            var tooltip = $("<div class='circlepack_viz-tooltip'></div>");
 	            viz.$container_wrap.append(tooltip);
-	            pack = data => d3.pack()
-	                .size([width - 2, height - 2])
-	                .padding(5)
-	            (d3.hierarchy(data)
-	                .sum(d => d.value)
-	                .sort(function(a, b) {
-	                    // If need to add Rectangle packing try adding this
-	                    // https://observablehq.com/@mbostock/packing-circles-inside-a-rectangle
-	                    if (viz.config.packing === "circle") { 
-	                        return b.value - a.value;
-	                    } else {
-	                        return 0;
-	                    }
-	                }));
-	            const root = pack(data);
+	            var root = pack(data);
 	            if (viz.config.colormode === "depth") {
 	                if (viz.config.color.substr(0,1) === "s") {
 	                    color = d3.scaleOrdinal(d3[viz.config.color]);
 	                } else {
-	                    color = d3.scaleSequential([viz.data.rows[0].length + 1, -3], d3[viz.config.color])
+	                    color = d3.scaleSequential([viz.data.rows[0].length + 1, -3], d3[viz.config.color]);
 	                }
 	            } else if (viz.config.colormode === "size") {
 	                if (viz.config.color.substr(0,1) === "s") {
@@ -276,28 +302,37 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    color = d3.scaleOrdinal(d3.quantize(d3[viz.config.color], 20 + 1));
 	                }
 	            }
-	            const shadow_id = viz.instance_id + "-" + (viz.instance_id_ctr++);
-	            svg.append("filter")
-	                .attr("id", shadow_id)
-	                .append("feDropShadow")
-	                .attr("flood-opacity", viz.config.shadow === "show" ? 0.3 : 0)
-	                .attr("dx", 0)
-	                .attr("dy", 1);
+	            var shadow_id = viz.instance_id + "_" + (viz.instance_id_ctr++);
+	            // This doesnt work in IE11 and Edge: https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/18760697/
+	            //var filter = svg.append("filter").attr("id", shadow_id).append("feDropShadow").attr("flood-opacity", viz.config.shadow === "show" ? 0.3 : 0).attr("dx", 0).attr("dy", 1);
+	            var defs = svg.append("defs");
+	            // height=120% so that the shadow is not clipped
+	            var filter = defs.append("filter").attr("id", shadow_id).attr("height", "120%");
+	            // From: http://bl.ocks.org/cpbotha/raw/5200394/dropshadow.js with tweaks.
+	            filter.append("feGaussianBlur").attr("in", "SourceAlpha").attr("stdDeviation", 2).attr("result", shadow_id + "A");
+	            filter.append("feColorMatrix").attr("in", shadow_id + "A").attr("type","matrix").attr("values", "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 " + (viz.config.shadow === "show" ? 0.35 : 0) + " 0").attr("result", shadow_id + "B");
+	            filter.append("feOffset").attr("in", shadow_id + "B").attr("dx", 0).attr("dy", 1).attr("result", shadow_id + "C");
+	            var feMerge = filter.append("feMerge");
+	            feMerge.append("feMergeNode").attr("in", shadow_id + "C")
+	            feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
+	            var focus = root;
+	            var node, label, view;
 	            if (viz.config.onclick === "zoom") {
 	                //https://observablehq.com/@d3/zoomable-circle-packing
-	                let focus = root;
-	                let view;
 	                svg /*.style("background", color(0))*/
 	                    .style("cursor", "pointer")
-	                    .on("click", () => zoom(root));
-	                const node = svg.append("g")
+	                    .on("click", function() { zoom(root); });
+	                node = svg.append("g")
 	                    .selectAll("circle")
 	                    .data(root.descendants().slice(1))
 	                    .join("circle")
-	                        .attr("id", d => (d.leafUid = viz.instance_id + "-" + (viz.instance_id_ctr++)))
+	                        .attr("id", function(d) { 
+	                            d.leafUid = viz.instance_id + "-" + (viz.instance_id_ctr++);
+	                            return (d.leafUid);
+	                        })
 	                        .attr("filter", "url(#" + shadow_id + ")")
-	                        .attr("fill", d => { 
+	                        .attr("fill", function(d) { 
 	                            if (viz.config._coloroverride.hasOwnProperty(d.data.name)) {
 	                                return viz.config._coloroverride[d.data.name];
 	                            }
@@ -311,69 +346,53 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                                return color(d.data.name);
 	                            }
 	                            if (viz.config.colormode === "parent") {
-	                                return color(d.parent.data.name)
+	                                return color(d.parent.data.name);
 	                            }
 	                            if (viz.config.colormode === "firstdata") {
 	                                return color(d.data.color);
 	                            }
 	                            if (viz.config.colormode === "firstdatacodes") {
+	                                if (d.hasOwnProperty("children")) {
+	                                    return color(d.data.color);
+	                                }
 	                                return d.data.color;
 	                            }
 	                        })
-	                        .attr("pointer-events", d => !d.children ? "none" : null)
+	                        .attr("pointer-events", function(d) { return !d.children ? "none" : null;})
 	                        .on("mouseover", function() { d3.select(this).attr("stroke", "#000"); })
 	                        .on("mouseout", function() { d3.select(this).attr("stroke", null); })
-	                        .on("click", d => focus !== d && (zoom(d), d3.event.stopPropagation()));
-	                const label = svg.append("g")
+	                        .on("click", function(d) { return focus !== d && (zoom(d), d3.event.stopPropagation()); });
+	                label = svg.append("g")
 	                    .attr("pointer-events", "none")
 	                    .attr("text-anchor", "middle")
 	                    .selectAll("text")
 	                    .data(root.descendants())
 	                    .join("text")
-	                        .style("fill-opacity", d => d.parent === root ? 1 : 0)
-	                        .style("display", d => d.parent === root ? "inline" : "none")
-	                        .text(d => d.data.name);
+	                        .attr("fill", viz.config.labelcolor)
+	                        .style("fill-opacity", function(d) { return d.parent === root ? 1 : 0;})
+	                        .style("display", function(d) { return d.parent === root ? "inline" : "none";})
+	                        .text(function(d) { return d.data.name;});
 	                zoomTo([root.x, root.y, root.r * 2]);
-
-	                function zoomTo(v) {
-	                    const k = Math.min(width, height) / v[2];
-	                    view = v;
-	                    label.attr("transform", d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
-	                    node.attr("transform", d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
-	                    node.attr("r", d => d.r * k);
-	                }
-	                function zoom(d) {
-	                    const focus0 = focus;
-	                    focus = d;
-	                    const transition = svg.transition()
-	                        .duration(d3.event.altKey ? 7500 : 750)
-	                        .tween("zoom", d => {
-	                            const i = d3.interpolateZoom(view, [focus.x, focus.y, focus.r * 2]);
-	                            return t => zoomTo(i(t));
-	                        });
-	                    label
-	                    .filter(function(d) { return d.parent === focus || this.style.display === "inline"; })
-	                    .transition(transition)
-	                        .style("fill-opacity", d => d.parent === focus ? 1 : 0)
-	                        .on("start", function(d) { if (d.parent === focus) this.style.display = "inline"; })
-	                        .on("end", function(d) { if (d.parent !== focus) this.style.display = "none"; });
-	                }
 
 	            } else {
 	                // https://observablehq.com/@d3/circle-packing
 
-	                const node = svg.selectAll("g")
-	                    .data(d3.nest().key(d => d.height).entries(root.descendants().slice(1)))
+	                node = svg.selectAll("g")
+	                    .data(d3.nest().key(function(d) { return d.height; }).entries(root.descendants().slice(1)))
 	                    .join("g")
 	                    .attr("filter", "url(#" + shadow_id + ")")
 	                    .selectAll("g")
-	                    .data(d => d.values)
+	                    .data(function(d) { return d.values; })
 	                    .join("g")
-	                    .attr("transform", d => `translate(${d.x + 1},${d.y + 1})`);
+	                    .attr("transform", function(d) { return "translate(" + (d.x + 1) +"," + (d.y + 1) + ")"; });
 	                node.append("circle")
-	                    .attr("r", d => d.r)
+	                    .attr("r", function(d) { return d.r; })
+	                    .attr("id", function(d) {
+	                        d.leafUid = viz.instance_id + "-" + (viz.instance_id_ctr++);
+	                        return d.leafUid;
+	                    })
 	                    //.attr("fill-opacity", 0.8)
-	                    .attr("fill", d => { 
+	                    .attr("fill", function(d) { 
 	                        if (viz.config._coloroverride.hasOwnProperty(d.data.name)) {
 	                            return viz.config._coloroverride[d.data.name];
 	                        }
@@ -387,35 +406,19 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                            return color(d.data.name);
 	                        }
 	                        if (viz.config.colormode === "parent") {
-	                            return color(d.parent.data.name)
+	                            return color(d.parent.data.name);
 	                        }
 	                        if (viz.config.colormode === "firstdata") {
 	                            return color(d.data.color);
 	                        }
 	                        if (viz.config.colormode === "firstdatacodes") {
+	                            if (d.hasOwnProperty("children")) {
+	                                return color(d.data.color);
+	                            }
 	                            return d.data.color;
 	                        }
 	                    });
 
-	                const leaf = node.filter(d => !d.children);
-	                leaf.select("circle")
-	                    .attr("id", d => (d.leafUid = viz.instance_id + "-" + (viz.instance_id_ctr++)));
-	                leaf.append("clipPath")
-	                    .attr("id", d => (d.clipUid = viz.instance_id + "-" + (viz.instance_id_ctr++)))
-	                    .append("use")
-	                    .attr("xlink:href", d => "#" + d.leafUid);
-	                if (viz.config.labels === "show") {
-	                leaf.append("text")
-	                    .attr("clip-path", d => "url(#" + d.clipUid + ")")
-	                    .attr("text-anchor", "middle")
-	                    .attr("fill", viz.config.labelcolor)
-	                    .selectAll("tspan")
-	                    .data(d => d.data.name.split(/(?=[A-Z][^A-Z])/g))
-	                    .join("tspan")
-	                    .attr("x", 0)
-	                    .attr("y", (d, i, nodes) => `${i - nodes.length / 2 + 0.8}em`)
-	                    .text(d => d);
-	                }
 	                node.on("mouseover", function(d) { tooltipCreate(d); })
 	                    .on("mousemove", function() { tooltipMove(event); })
 	                    .on("mouseout", tooltiphide);
@@ -444,6 +447,48 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                            }
 	                        });
 	                }
+	                var tt_data = root.descendants().filter(function(d){
+	                    if (viz.config.labels === "show") {
+	                        return !d.children;
+	                    } else if (viz.config.labels === "show1") {
+	                        return d.depth == 1;
+	                    } else if (viz.config.labels === "show2") {
+	                        return d.depth == 2;
+	                    } else if (viz.config.labels === "show3") {
+	                        return d.depth == 3;
+	                    } else if (viz.config.labels === "show4") {
+	                        return d.depth == 4;
+	                    } else if (viz.config.labels === "show5") {
+	                        return d.depth == 5;
+	                    }
+	                    return false;
+	                });
+	                var leaf = svg.append("g");
+	                if (viz.config.labeltruncate === "on") {
+	                    leaf.selectAll("clipPath")
+	                        .data(tt_data)
+	                        .join("clipPath")
+	                        .attr("id", function(d)  {
+	                            d.clipUid = viz.instance_id + "-" + (viz.instance_id_ctr++);
+	                            return d.clipUid;
+	                        })
+	                        .append("use")
+	                        .attr("xlink:href", function(d) { return "#" + d.leafUid; });
+	                }
+	                leaf.selectAll("text")
+	                    .data(tt_data)
+	                    .join("text")
+	                        .attr("pointer-events", "none")
+	                        .attr("transform", function(d) { return "translate(" + (d.x + 1) + "," + (d.y + 1) + ")";})
+	                        .attr("clip-path", function(d) { return d.hasOwnProperty("clipUid") ? "url(#" + d.clipUid + ")" : ""; })
+	                        .attr("text-anchor", "middle")
+	                        .attr("fill", viz.config.labelcolor)
+	                    .selectAll("tspan")
+	                        .data(function(d) { if (viz.config.labelwrap === "on") { return d.data.name.split(/(?=[A-Z][^A-Z])/g); } else { return [d.data.name]; }} )
+	                        .join("tspan")
+	                        .attr("x", 0)
+	                        .attr("y", function(d, i, nodes) { return (i - nodes.length / 2 + 0.8) + "em"; })
+	                        .text(function(d) { return d; });
 	            }
 	        },
 

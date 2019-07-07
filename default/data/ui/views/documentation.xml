@@ -187,7 +187,7 @@ index=\"_internal\" sourcetype=\"splunkd_conf\" log_level=\"INFO\" component=\"C
 | table color component count</code></pre>
 
 
-<p>Note that when using "Click action" of "Zoom in" the labels are not clipped and will probably overlap.</p>
+<p>Note that when using "Click action" of "Zoom in" the labels are do not honor the clipping and truncating settings and may overlap.</p>
 
 <p>Examples of color themes: <a href="/static/app/circlepack_viz/themes.png"><br /><img alt="" src="/static/app/circlepack_viz/themes.png" style="max-width: 500px;" /></a></p>
 

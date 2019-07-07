@@ -8,3 +8,6 @@ default.visualizations.custom.circlepack_viz.circlepack_viz.color = <string>
 default.visualizations.custom.circlepack_viz.circlepack_viz.coloroverride = <string>
 default.visualizations.custom.circlepack_viz.circlepack_viz.shadow = <string>
 default.visualizations.custom.circlepack_viz.circlepack_viz.packing = <string>
+default.visualizations.custom.circlepack_viz.circlepack_viz.labelwrap = <string>
+default.visualizations.custom.circlepack_viz.circlepack_viz.labeltruncate = <string>
+default.visualizations.custom.circlepack_viz.circlepack_viz.maxrows = <string>

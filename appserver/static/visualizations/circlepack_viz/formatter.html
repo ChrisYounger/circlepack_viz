@@ -61,15 +61,34 @@
 
         <splunk-control-group label="Shadow">
                 <splunk-radio-input name="{{VIZ_NAMESPACE}}.shadow" value="show">
-                        <option value="show">Show</option>
-                        <option value="hide">Hide</option>
+                        <option value="show">On</option>
+                        <option value="hide">Off</option>
                 </splunk-radio-input>
         </splunk-control-group>
 
         <splunk-control-group label="Labels">
-                <splunk-radio-input name="{{VIZ_NAMESPACE}}.labels" value="show">
-                        <option value="show">Show</option>
+                <splunk-select name="{{VIZ_NAMESPACE}}.labels" value="show">
                         <option value="hide">Hide</option>
+                        <option value="show">Show on leaf nodes</option>
+                        <option value="show1">Show where depth is 1</option>
+                        <option value="show2">Show where depth is 2</option>
+                        <option value="show3">Show where depth is 3</option>
+                        <option value="show4">Show where depth is 4</option>
+                        <option value="show5">Show where depth is 5</option>
+                </splunk-select>
+        </splunk-control-group>
+
+        <splunk-control-group label="Label wrap">
+                <splunk-radio-input name="{{VIZ_NAMESPACE}}.labelwrap" value="on">
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
+                </splunk-radio-input>
+        </splunk-control-group>
+
+        <splunk-control-group label="Label truncate">
+                <splunk-radio-input name="{{VIZ_NAMESPACE}}.labeltruncate" value="off">
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
                 </splunk-radio-input>
         </splunk-control-group>
         
