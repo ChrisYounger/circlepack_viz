@@ -1,13 +1,12 @@
-[default]
-default.visualizations.custom.circlepack_viz.circlepack_viz.onclick = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.colormode = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.labels = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.labelsize = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.labelcolor = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.color = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.coloroverride = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.shadow = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.packing = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.labelwrap = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.labeltruncate = <string>
-default.visualizations.custom.circlepack_viz.circlepack_viz.maxrows = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.onclick = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.colormode = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.labels = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.labelsize = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.labelcolor = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.color = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.coloroverride = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.shadow = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.packing = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.labelwrap = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.labeltruncate = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.maxrows = <string>
