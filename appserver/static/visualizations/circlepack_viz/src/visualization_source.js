@@ -153,7 +153,7 @@ function(
             for (i = 0; i < viz.data.rows.length; i++) {
                 var parts = viz.data.rows[i].slice();
                 var nodesize = parts.pop();
-                if (nodesize === "" || isNaN(Number(nodesize))) {
+                if (nodesize === "" || nodesize === null || isNaN(Number(nodesize))) {
                     skippedRows++;
                     continue;
                 } else {
@@ -205,13 +205,12 @@ function(
             if (skippedRows) {
                 console.log("Rows skipped because last column is not numeric: ", skippedRows);
             }
-            //console.log("Valid rows: ", validRows);
             if (skippedRows && ! validRows) {
                 viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.</div>");
                 return;
             }
             if (validRows > Number(viz.config.maxrows)) {
-                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Too many rows of data (Total rows:" + validRows + ", Limit: " + viz.config.maxrows + "). </div>");
+                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Too many rows of data.  Increase limit in formatting settings. (Total rows:" + validRows + ", Limit: " + viz.config.maxrows + "). </div>");
                 return;
             }
             var svg;
