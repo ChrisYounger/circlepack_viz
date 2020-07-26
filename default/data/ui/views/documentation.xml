@@ -1,4 +1,4 @@
-<form theme="light">
+<form theme="light" hideAppBar="true">
   <label>Circlepack Viz - Documentation</label>
   <search id="base1">
     <query>| makeresults   
@@ -108,8 +108,8 @@ index=\"_internal\" sourcetype=\"splunkd_conf\" log_level=\"INFO\" component=\"C
 <div style="max-width: 1200px; margin: 0 auto;">
 <h2>Circlepack Viz</h2>
 <p>Circle packing / Pack layout / bubble chart visualization built with D3.  Optional click-to-zoom and plenty of color themes.</p>
-<p>Copyright (C) 2019 Chris Younger. I am a Splunk Professional Services consultant working for JDS Australia, in Brisbane Australia.</p>
-<p><a href="https://splunkbase.splunk.com/app/4574/#/details">Splunkbase</a> | <a href="https://github.com/ChrisYounger/circlepack_viz">Source code</a> |  <a href="https://answers.splunk.com/app/questions/4574.html">Questions, Bugs or Suggestions</a> | <a href="https://splunkbase.splunk.com/apps/#/author/chrisyoungerjds">My Splunk apps</a></p>
+
+<p>Copyright (C) 2020 Chris Younger | <a href="https://splunkbase.splunk.com/app/4574/#/details">Splunkbase</a> | <a href="https://github.com/ChrisYounger/circlepack_viz">Source code</a> |  <a href="https://answers.splunk.com/app/questions/4574.html">Questions, Bugs or Suggestions</a> | <a href="https://splunkbase.splunk.com/apps/#/author/chrisyoungerjds">My Splunk apps</a></p>
 
 <br /><br /><br /><br />
 
