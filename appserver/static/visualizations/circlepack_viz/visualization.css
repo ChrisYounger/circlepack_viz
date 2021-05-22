@@ -9,8 +9,7 @@
     position: absolute;
     z-index: 10;
     visibility: hidden;
-    background-color: #F2F4F5;
-    border: 1px solid #C6C6C6;
+    background-color: white;
     text-align: center;
     padding: 6px;
     border-radius: 4px;

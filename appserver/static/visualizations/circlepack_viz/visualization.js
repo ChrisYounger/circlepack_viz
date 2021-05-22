@@ -87,6 +87,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                onclick: "none",
 	                maxrows: "1500",
 	                coloroverride: "",
+	                nulltoken: "",
 	                color: "schemeCategory10"
 	            };
 	            // Override defaults with selected items from the UI
@@ -190,6 +191,10 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            for (var l = 0; l < viz.data.rows.length; l++) {
 	                total += Number(viz.data.rows[l][viz.data.rows[l].length-1]);
 	            }
+	            viz.valueFieldName = "";
+	            if (viz.data.fields.length > 1) {
+	                viz.valueFieldName = viz.data.fields[viz.data.fields.length-1].name;
+	            }
 	            // Convert splunk tabular data to a heirachy format for d3
 	            var data = {"name": "root", "children": []};
 	            var drilldown, i, j, k;
@@ -252,6 +257,10 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            }
 	            if (skippedRows && ! validRows) {
 	                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.</div>");
+	                return;
+	            }
+	            if (viz.data.fields.length <= 1) {
+	                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>There must be at least 1 column of labels.<br /><a href='/app/circlepack_viz/documentation' target='_blank'>Examples and Documentation</a></div>");
 	                return;
 	            }
 	            if (validRows > Number(viz.config.maxrows)) {
@@ -423,27 +432,31 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    .on("mouseout", tooltiphide);
 	                if (viz.config.onclick === "token" || viz.config.onclick === "drilldown") {
 	                    node.style("cursor", "pointer")
-	                        .on("click", function(d, browserEvent){
-	                            if (viz.config.onclick === "token") {
-	                                var defaultTokenModel = splunkjs.mvc.Components.get('default');
-	                                var submittedTokenModel = splunkjs.mvc.Components.get('submitted');
-	                                for (var item in d.data.drilldown) {
-	                                    if (d.data.drilldown.hasOwnProperty(item)) {
-	                                        console.log("Setting token $circlepack_viz_" +  item + "$ to", d.data.drilldown[item]);
-	                                        if (defaultTokenModel) {
-	                                            defaultTokenModel.set("circlepack_viz_" + item, d.data.drilldown[item]);
-	                                        } 
-	                                        if (submittedTokenModel) {
-	                                            submittedTokenModel.set("circlepack_viz_" + item, d.data.drilldown[item]);
-	                                        }
+	                        .on("click", function(d){
+	                            var defaultTokenModel = splunkjs.mvc.Components.get('default');
+	                            var submittedTokenModel = splunkjs.mvc.Components.get('submitted');
+	                            var drilldown_obj = {};
+	                            for (var i = 0; i < viz.data.fields.length; i++) {
+	                                if (viz.valueFieldName !== viz.data.fields[i].name) {
+	                                    var tokenName = "circlepack_viz_" + viz.data.fields[i].name;
+	                                    if (d.data.drilldown.hasOwnProperty(viz.data.fields[i].name)) {
+	                                        drilldown_obj[tokenName] = d.data.drilldown[viz.data.fields[i].name];
+	                                    } else {
+	                                        drilldown_obj[tokenName] = viz.config.nulltoken;
+	                                    }
+	                                    console.log("Setting token $" +  tokenName + "$ to", drilldown_obj[tokenName]);
+	                                    if (defaultTokenModel) {
+	                                        defaultTokenModel.set(tokenName, drilldown_obj[tokenName]);
+	                                    }
+	                                    if (submittedTokenModel) {
+	                                        submittedTokenModel.set(tokenName, drilldown_obj[tokenName]);
 	                                    }
 	                                }
-	                            } else {
-	                                viz.drilldown({
-	                                    action: SplunkVisualizationBase.FIELD_VALUE_DRILLDOWN,
-	                                    data: d.data.drilldown
-	                                });
 	                            }
+	                            viz.drilldown({
+	                                action: SplunkVisualizationBase.FIELD_VALUE_DRILLDOWN,
+	                                data: drilldown_obj
+	                            }, event);
 	                        });
 	                }
 	                var tt_data = root.descendants().filter(function(d){

@@ -9,4 +9,5 @@ display.visualizations.custom.circlepack_viz.circlepack_viz.shadow = <string>
 display.visualizations.custom.circlepack_viz.circlepack_viz.packing = <string>
 display.visualizations.custom.circlepack_viz.circlepack_viz.labelwrap = <string>
 display.visualizations.custom.circlepack_viz.circlepack_viz.labeltruncate = <string>
+display.visualizations.custom.circlepack_viz.circlepack_viz.nulltoken = <string>
 display.visualizations.custom.circlepack_viz.circlepack_viz.maxrows = <string>
