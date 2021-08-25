@@ -211,7 +211,7 @@ function(
                 console.log("Rows skipped because last column is not numeric: ", skippedRows);
             }
             if (skippedRows && ! validRows) {
-                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.</div>");
+                viz.$container_wrap.empty().append("<div class='circlepack_viz-bad_data'>Last column of data must contain numeric values.<br /><a href='/app/circlepack_viz/documentation' target='_blank'>Examples and Documentation</a></div>");
                 return;
             }
             if (viz.data.fields.length <= 1) {
